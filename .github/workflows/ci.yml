@@ -16,6 +16,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Make gradlew executable
+        working-directory: reader-backend
+        run: chmod +x gradlew
       - name: Build backend
         working-directory: reader-backend
         run: |
