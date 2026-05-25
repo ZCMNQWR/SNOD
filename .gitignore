@@ -1,0 +1,33 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IntelliJ
+*.iml
+/.idea/
+
+# VS Code
+.vscode/
+
+# Node
+node_modules/
+dist/
+reader-web/node_modules/
+reader-web/dist/
+
+# Gradle wrapper and backend build
+reader-backend/.gradle/
+reader-backend/build/
+
+# Environment files
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
