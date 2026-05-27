@@ -158,7 +158,10 @@ function App() {
     }
 
     setSyncStatus('Connecting...');
-    void Promise.resolve().then(() => refreshLibrary(true)
+    void Promise.resolve().then(() => {
+  setSyncStatus('Connecting...');
+  return refreshLibrary(true);
+})
       .then((files) => {
         if (files.length === 0) {
           setSyncStatus('Connected — no files yet.');
@@ -356,11 +359,14 @@ function App() {
     const progressUserId = userId;
 
     if (!progressUserId) {
-      setNotesByPage({});
-      setCurrentPageFromManualAction(1);
-      setSyncStatus('Signed out.');
-      return;
-    }
+  queueMicrotask(() => {
+    setNotesByPage({});
+    setCurrentPageFromManualAction(1);
+    setSyncStatus('Signed out.');
+  });
+  return;
+}
+
 
     async function fetchServerState() {
       isDocumentHydratingRef.current = true;
