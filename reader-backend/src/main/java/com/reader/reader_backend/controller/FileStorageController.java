@@ -19,7 +19,6 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,7 +34,6 @@ import com.reader.reader_backend.repository.FileRecordRepository;
 
 @RestController
 @RequestMapping("/api/files")
-@CrossOrigin(origins = {"http://localhost:5173", "https://ZCMNQWR.github.io", "https://zcmnqwr.github.io"})
 public class FileStorageController {
 
     private static final Logger logger = LoggerFactory.getLogger(FileStorageController.class);
