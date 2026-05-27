@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-// @Configuration // Disabled because GlobalCorsConfig.java now handles CORS properly
 public class WebConfig implements WebMvcConfigurer {
 
     @Value("${app.cors.allowed-origins}")

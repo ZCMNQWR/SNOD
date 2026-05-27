@@ -13,15 +13,12 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -49,15 +46,21 @@ public class FileStorageController {
         this.documentProgressRepository = documentProgressRepository;
     }
 
-    @GetMapping
-    public List<Map<String, String>> listAvailableFiles() {
-        List<Map<String, String>> fileList = new ArrayList<>();
-        File folder = new File(STORAGE_DIR);
-
-        // Create the directory automatically if it doesn't exist yet
+    private File getUserFolder(String email) {
+        // Sanitize the email address to be a safe directory name
+        String safeEmail = email.replaceAll("[^a-zA-Z0-9@.-]", "_");
+        File folder = new File(STORAGE_DIR + File.separator + safeEmail);
         if (!folder.exists()) {
             folder.mkdirs();
         }
+        return folder;
+    }
+
+    @org.springframework.web.bind.annotation.GetMapping
+    public List<Map<String, String>> listAvailableFiles(java.security.Principal principal) {
+        String email = principal.getName();
+        List<Map<String, String>> fileList = new ArrayList<>();
+        File folder = getUserFolder(email);
 
         File[] listOfFiles = folder.listFiles();
         if (listOfFiles != null) {
@@ -83,10 +86,11 @@ public class FileStorageController {
                         fileInfo.put("lastModified", java.time.Instant.ofEpochMilli(epoch).toString());
 
                         // persisted "added to library" timestamp: create record if missing
-                        FileRecord record = fileRecordRepository.findById(filename).orElse(null);
+                        String recordId = email + "_" + filename;
+                        FileRecord record = fileRecordRepository.findById(recordId).orElse(null);
                         if (record == null) {
                             long now = System.currentTimeMillis();
-                            record = new FileRecord(filename, now);
+                            record = new FileRecord(recordId, now);
                             fileRecordRepository.save(record);
                         }
 
@@ -95,7 +99,7 @@ public class FileStorageController {
                         }
 
                         // Include last opened timestamp if we have progress entries
-                        documentProgressRepository.findTopByDocumentIdOrderByUpdatedAtDesc(filename).ifPresent(dp -> {
+                        documentProgressRepository.findByUserIdAndDocumentId(email, filename).ifPresent(dp -> {
                             if (dp.getUpdatedAt() != null) {
                                 long openedEpoch = dp.getUpdatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
                                 fileInfo.put("lastOpenedEpoch", String.valueOf(openedEpoch));
@@ -123,26 +127,31 @@ public class FileStorageController {
     }
 
     @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String, String>> uploadFile(@RequestParam("file") MultipartFile multipart) {
+    public ResponseEntity<Map<String, String>> uploadFile(java.security.Principal principal, @RequestParam("file") MultipartFile multipart) {
         try {
             if (multipart == null || multipart.isEmpty()) {
                 return ResponseEntity.badRequest().build();
             }
 
-            String filename = multipart.getOriginalFilename();
-            if (filename == null || filename.isBlank()) {
+            String originalName = multipart.getOriginalFilename();
+            if (originalName == null || originalName.isBlank()) {
                 return ResponseEntity.badRequest().build();
             }
+            // Sanitize the filename to prevent Directory Traversal (Path Injection) attacks
+            String filename = new java.io.File(originalName).getName();
 
-            File dest = new File(STORAGE_DIR + File.separator + filename);
+            String email = principal.getName();
+
+            File dest = new File(getUserFolder(email) + File.separator + filename);
             // Save the uploaded file to storage directory
             multipart.transferTo(dest.toPath());
 
             // Ensure a FileRecord exists for this filename
-            FileRecord record = fileRecordRepository.findById(filename).orElse(null);
+            String recordId = email + "_" + filename;
+            FileRecord record = fileRecordRepository.findById(recordId).orElse(null);
             if (record == null) {
                 long now = System.currentTimeMillis();
-                record = new FileRecord(filename, now);
+                record = new FileRecord(recordId, now);
                 fileRecordRepository.save(record);
             }
 
@@ -169,15 +178,17 @@ public class FileStorageController {
 
     @DeleteMapping("/{filename}")
     public ResponseEntity<Void> deleteFile(
-            @PathVariable String filename,
+            java.security.Principal principal,
+            @org.springframework.web.bind.annotation.PathVariable String filename,
             @RequestParam(name = "deleteRelatedData", defaultValue = "true") boolean deleteRelatedData) {
+        String email = principal.getName();
         try {
             // Ensure any percent-encoding is decoded and strip any path components
             String decoded = java.net.URLDecoder.decode(filename, java.nio.charset.StandardCharsets.UTF_8.name());
             // Prevent path traversal by keeping only the file name portion
             String safeName = new java.io.File(decoded).getName();
 
-            File file = new File(STORAGE_DIR + File.separator + safeName);
+            File file = new File(getUserFolder(email) + File.separator + safeName);
 
             if (file.exists() && file.isFile()) {
                 if (!file.delete()) {
@@ -187,9 +198,11 @@ public class FileStorageController {
             }
 
             // Remove library metadata and optionally related progress; be idempotent
-            fileRecordRepository.deleteById(safeName);
+            fileRecordRepository.deleteById(email + "_" + safeName);
             if (deleteRelatedData) {
-                documentProgressRepository.deleteByDocumentId(safeName);
+                documentProgressRepository.findByUserIdAndDocumentId(email, safeName).ifPresent(dp -> {
+                    documentProgressRepository.delete(dp);
+                });
             }
 
             return ResponseEntity.noContent().build();
@@ -208,11 +221,15 @@ public class FileStorageController {
         }
     }
 
-    @GetMapping("/download/{filename}")
-    public ResponseEntity<Resource> downloadFile(@PathVariable String filename) {
+    @org.springframework.web.bind.annotation.GetMapping("/download/{filename}")
+    public ResponseEntity<org.springframework.core.io.Resource> downloadFile(java.security.Principal principal, @org.springframework.web.bind.annotation.PathVariable String filename) {
+        String email = principal.getName();
         try {
-            File file = new File(STORAGE_DIR + File.separator + filename);
-            Resource resource = new UrlResource(file.toURI());
+            // Sanitize against directory traversal just to be absolutely safe
+            String safeName = new java.io.File(filename).getName();
+
+            File file = new File(getUserFolder(email) + File.separator + safeName);
+            org.springframework.core.io.Resource resource = new UrlResource(file.toURI());
 
             if (!resource.exists() || !resource.isReadable()) {
                 return ResponseEntity.notFound().build();
@@ -221,7 +238,7 @@ public class FileStorageController {
             // 1. Determine the official Web Content Type based on file extension
             String contentType = "application/octet-stream"; // Default fallback binary type
             String filenameLower = filename.toLowerCase();
-            
+
             if (filenameLower.endsWith(".pdf")) {
                 contentType = "application/pdf";
             } else if (filenameLower.endsWith(".docx")) {
@@ -234,7 +251,7 @@ public class FileStorageController {
 
             // 2. Return the file stamped with the explicit Content-Type header
             return ResponseEntity.ok()
-                    .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
+                    .contentType(MediaType.parseMediaType(contentType))
                     .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.getName() + "\"")
                     .body(resource);
 
@@ -243,4 +260,4 @@ public class FileStorageController {
             return ResponseEntity.internalServerError().build();
         }
     }
-} // <--- Make sure this final closing brace is exactly here at the end of the file!
+}

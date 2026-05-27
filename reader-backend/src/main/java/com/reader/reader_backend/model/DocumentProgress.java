@@ -1,4 +1,4 @@
-package com.reader.reader_backend.model; // Updated for your folder structure
+package com.reader.reader_backend.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;

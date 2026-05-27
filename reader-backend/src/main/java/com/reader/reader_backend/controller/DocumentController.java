@@ -1,10 +1,11 @@
-package com.reader.reader_backend.controller; // Updated for your folder structure
+package com.reader.reader_backend.controller;
 
 import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import java.security.Principal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,7 +29,9 @@ public class DocumentController {
     }
 
     @PostMapping
-    public ResponseEntity<DocumentProgress> saveOrUpdateProgress(@RequestBody DocumentProgress incomingProgress) {
+    public ResponseEntity<DocumentProgress> saveOrUpdateProgress(Principal principal, @RequestBody DocumentProgress incomingProgress) {
+        String email = principal.getName();
+        incomingProgress.setUserId(email); // Enforce the JWT user ID to prevent spoofing
         logger.info("saveOrUpdateProgress called: user={} document={} type={} page={}", incomingProgress.getUserId(), incomingProgress.getDocumentId(), incomingProgress.getDocumentType(), incomingProgress.getCurrentPage());
         Optional<DocumentProgress> existingProgress = repository.findByUserIdAndDocumentId(
                 incomingProgress.getUserId(), 
@@ -49,7 +52,11 @@ public class DocumentController {
     }
 
     @GetMapping("/{userId}/{documentId}")
-    public ResponseEntity<DocumentProgress> getProgress(@PathVariable String userId, @PathVariable String documentId) {
+    public ResponseEntity<DocumentProgress> getProgress(Principal principal, @PathVariable String userId, @PathVariable String documentId) {
+        String email = principal.getName();
+        if (!email.equals(userId)) {
+            return ResponseEntity.status(403).build();
+        }
         Optional<DocumentProgress> found = repository.findByUserIdAndDocumentId(userId, documentId);
         if (found.isPresent()) {
             DocumentProgress dp = found.get();
