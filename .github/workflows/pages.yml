@@ -26,6 +26,8 @@ jobs:
         working-directory: reader-web
         run: |
           npm ci
+      - name: Verify Environment Variable
+        run: echo "GitHub Variable VITE_API_BASE_URL is ${{ vars.VITE_API_BASE_URL }}"
       - name: Build frontend
         working-directory: reader-web
         run: |
