@@ -1,11 +1,10 @@
 package com.reader.reader_backend.config;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-@Configuration
+// @Configuration // Disabled because GlobalCorsConfig.java now handles CORS properly
 public class WebConfig implements WebMvcConfigurer {
 
     @Value("${app.cors.allowed-origins}")
