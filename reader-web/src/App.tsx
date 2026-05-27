@@ -1,24 +1,48 @@
-import { useState, useEffect, useRef, useCallback, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type MouseEvent as ReactMouseEvent } from 'react';
 import { saveProgress, getProgress, getAvailableFiles } from './services/api';
 import type { DocumentProgress, AvailableFile } from './services/api';
-import { TxtViewer } from './components/TxtViewer';
-import { PdfViewer } from './components/PdfViewer';
-import { DocxViewer } from './components/DocxViewer';
-import LibraryPanel from './components/LibraryPanel';
-import InfoModal from './components/InfoModal';
-import NotesSidebar from './components/NotesSidebar';
-import SignInButton from './components/SignInButton';
+import AuthGate from './components/AuthGate';
+import DocumentLanding from './components/DocumentLanding';
+import ReaderWorkspace from './components/ReaderWorkspace';
 import type { HighlightEntry, NotesByPage, PageNoteEntry } from './types/notes';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
+const getStoredUserId = (): string => {
+  const token = localStorage.getItem('OAUTH_TOKEN');
+  if (!token) {
+    return '';
+  }
+
+  if (token.startsWith('Bearer user:')) {
+    const email = token.slice('Bearer user:'.length).trim();
+    return email || '';
+  }
+
+  try {
+    const rawToken = token.startsWith('Bearer ') ? token.slice(7) : token;
+    const payloadPart = rawToken.split('.')[1];
+    if (!payloadPart) {
+      return '';
+    }
+
+    const payload = JSON.parse(atob(payloadPart));
+    return payload.email || '';
+  } catch {
+    return '';
+  }
+};
+
 function App() {
-  const [userId] = useState<string>('steve123');
+  const [userId, setUserId] = useState<string>(() => getStoredUserId());
+  const [isSignedIn, setIsSignedIn] = useState<boolean>(() => {
+    const token = localStorage.getItem('OAUTH_TOKEN');
+    return Boolean(token && token.startsWith('Bearer user:'));
+  });
+  
   const [isFullPage, setIsFullPage] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'single' | 'scroll'>('scroll');
   const [zoom, setZoom] = useState<number>(100);
-  const [menuOpen, setMenuOpen] = useState<boolean>(false);
-  const [menuHover, setMenuHover] = useState<'notes' | 'info' | null>(null);
   const [notesOpen, setNotesOpen] = useState<boolean>(false);
   const [notesPanelWidth, setNotesPanelWidth] = useState<number>(340);
   
@@ -33,15 +57,37 @@ function App() {
   const [notesByPage, setNotesByPage] = useState<NotesByPage>({});
   const [syncStatus, setSyncStatus] = useState<string>('Connecting...');
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
-  
+
+  const AUTO_SAVE_DELAY_MS = 5000;
+
   const shellRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const pageChangeSourceRef = useRef<'manual' | 'scroll' | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notesResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const isDocumentHydratingRef = useRef<boolean>(false);
   const pendingLoadedPageRef = useRef<number | null>(null);
+
+  const resetDocumentState = () => {
+    isDocumentHydratingRef.current = false;
+    pendingLoadedPageRef.current = null;
+    setSelectedFile(null);
+    setCurrentPage(1);
+    setPageInput('1');
+    setTotalPages(1);
+    setNotesByPage({});
+    setSelectedHighlightId(null);
+    setLibraryOpen(false);
+    setInfoOpen(false);
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem('OAUTH_TOKEN');
+    setIsSignedIn(false);
+    setUserId('');
+    resetDocumentState();
+    setSyncStatus('Signed out.');
+  };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -107,8 +153,24 @@ function App() {
   };
 
   useEffect(() => {
-    void Promise.resolve().then(() => refreshLibrary(true));
-  }, []);
+    if (!isSignedIn) {
+      return;
+    }
+
+    setSyncStatus('Connecting...');
+    void Promise.resolve().then(() => refreshLibrary(true)
+      .then((files) => {
+        if (files.length === 0) {
+          setSyncStatus('Connected — no files yet.');
+        } else {
+          setSyncStatus('Connected');
+        }
+      })
+      .catch(() => {
+        setSyncStatus('Connection failed.');
+      })
+    );
+  }, [isSignedIn]);
 
 
   useEffect(() => {
@@ -140,7 +202,7 @@ function App() {
       }).catch(() => {
         setSyncStatus('Auto-save failed.');
       });
-    }, 600);
+    }, AUTO_SAVE_DELAY_MS);
 
     return () => {
       if (autoSaveTimerRef.current) {
@@ -148,28 +210,6 @@ function App() {
       }
     };
   }, [currentPage, notesByPage, selectedFile?.id, selectedFile?.type, userId]);
-
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!menuOpen) {
-        return;
-      }
-
-      const target = event.target as Node | null;
-      if (target && menuRef.current?.contains(target)) {
-        return;
-      }
-
-      setMenuOpen(false);
-      setMenuHover(null);
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-    };
-  }, [menuOpen]);
 
   const setCurrentPageFromManualAction = (page: number) => {
     pageChangeSourceRef.current = 'manual';
@@ -294,15 +334,16 @@ function App() {
   // Handle Swapping Files
   const saveCurrentProgressIfNeeded = async () => {
     if (!selectedFile) return;
+    const fileToSave = selectedFile; // capture current file to avoid races when selectedFile changes
     try {
       await saveProgress({
         userId,
-        documentId: selectedFile.id,
-        documentType: selectedFile.type,
+        documentId: fileToSave.id,
+        documentType: fileToSave.type,
         currentPage,
         syncDataJson: JSON.stringify({ notesByPage })
       });
-      setSyncStatus(`Saved progress for ${selectedFile.name} on Page ${currentPage}.`);
+      setSyncStatus(`Saved progress for ${fileToSave.name} on Page ${currentPage}.`);
     } catch (err) {
       console.warn(err);
       setSyncStatus('Failed to save progress before switching file.');
@@ -312,9 +353,18 @@ function App() {
   // Cloud Progress Syncing Coordinates
   useEffect(() => {
     if (!selectedFile?.id) return;
+    const progressUserId = userId;
+
+    if (!progressUserId) {
+      setNotesByPage({});
+      setCurrentPageFromManualAction(1);
+      setSyncStatus('Signed out.');
+      return;
+    }
+
     async function fetchServerState() {
       isDocumentHydratingRef.current = true;
-      const data = await getProgress(userId, selectedFile!.id);
+      const data = await getProgress(progressUserId, selectedFile!.id);
       if (data) {
         // Don't immediately set the page if viewer hasn't reported total pages yet.
         const loadedPage = data.currentPage;
@@ -429,7 +479,20 @@ function App() {
 
     try {
       await saveProgress(payload);
-      setSyncStatus(`Saved on page ${currentPage}.`);
+      // verify by fetching back the saved progress
+      try {
+        const confirmed = await getProgress(userId, selectedFile.id);
+        if (confirmed && confirmed.currentPage === currentPage) {
+          setSyncStatus(`Saved on page ${currentPage}.`);
+        } else if (confirmed) {
+          setSyncStatus(`Saved but server has page ${confirmed.currentPage}.`);
+        } else {
+          setSyncStatus('Saved, but server returned no progress.');
+        }
+      } catch (e) {
+        console.warn('Verification failed', e);
+        setSyncStatus(`Saved (verification failed).`);
+      }
     } catch (err) {
       console.warn(err);
       setSyncStatus('Sync broken.');
@@ -461,6 +524,13 @@ function App() {
       startX: event.clientX,
       startWidth: notesPanelWidth,
     };
+  };
+
+  const openFileForCurrentSession = async (file: AvailableFile) => {
+    await saveCurrentProgressIfNeeded();
+    isDocumentHydratingRef.current = true;
+    setSelectedFile(file);
+    await refreshLibrary();
   };
 
   useEffect(() => {
@@ -552,476 +622,85 @@ function App() {
     return () => viewport.removeEventListener('mouseup', handleMouseUp);
   }, [addHighlight, currentPage, notesOpen]);
 
-  const shellStyle: CSSProperties = {
-    fontFamily: 'system-ui, sans-serif',
-    width: '100%',
-    height: '100vh',
-    margin: '0',
-    padding: '0',
-    border: 'none',
-    borderRadius: '0',
-    boxShadow: 'none',
-    boxSizing: 'border-box',
-    display: 'flex',
-    flexDirection: 'column',
-    backgroundColor: '#fff',
-    overflow: 'auto'
-  };
-
-  const toolbarStyle: CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '16px',
-    padding: '12px 16px',
-    backgroundColor: '#3C3C3C',
-    color: '#fff',
-    borderBottom: '1px solid #2C2C2C',
-    flexShrink: 0,
-    height: '56px',
-    boxSizing: 'border-box'
-  };
-
-  const toolbarButtonStyle: CSSProperties = {
-    padding: '6px 12px',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: '500',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: '#fff',
-    transition: 'background 0.2s ease',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px'
-  };
-
-  const viewportStyle: CSSProperties = {
-    flex: 1,
-    width: '100%',
-    overflowY: 'auto',
-    overflowX: 'hidden',
-    backgroundColor: '#808080',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    padding: '16px',
-    boxSizing: 'border-box'
-  };
-
-  const handleSelectHighlight = (id: string | null) => {
-    setSelectedHighlightId(id);
-    if (id) {
-      setNotesOpen(true);
-    }
-  };
+  if (!isSignedIn) {
+    return (
+      <AuthGate
+        onAuthenticated={(email, token, status) => {
+          localStorage.setItem('OAUTH_TOKEN', token);
+          setUserId(email);
+          setIsSignedIn(true);
+          setSyncStatus(status);
+        }}
+      />
+    );
+  }
 
   // 🌟 TypeScript Safety Guard: Stops execution if data is still fetching over the network
   if (!selectedFile) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'system-ui, sans-serif' }}>
-        <div style={{ textAlign: 'center' }}>
-          <span style={{ fontSize: '32px' }}>⏳</span>
-          <h3 style={{ marginTop: '10px', color: '#666' }}>Connecting to Backend Storage...</h3>
-          <p style={{ fontSize: '13px', color: '#999' }}>Make sure your Spring Boot server is running.</p>
-        </div>
-        {libraryOpen && (
-          <LibraryPanel
-            files={library}
-            onClose={() => setLibraryOpen(false)}
-            onSelect={async (file) => {
-              await saveCurrentProgressIfNeeded();
-              isDocumentHydratingRef.current = true;
-              setSelectedFile(file);
-              await refreshLibrary();
-              setLibraryOpen(false);
-            }}
-            onRemove={handleRemoveFileFromLibrary}
-          />
-        )}
-      </div>
+      <DocumentLanding
+        activeLibrary={library}
+        libraryOpen={libraryOpen}
+        onOpenLibrary={() => setLibraryOpen(true)}
+        onCloseLibrary={() => setLibraryOpen(false)}
+        onRefreshLibrary={async () => {
+          setSyncStatus('Refreshing library...');
+          await refreshLibrary();
+        }}
+        onSelectFile={openFileForCurrentSession}
+        onRemoveFile={handleRemoveFileFromLibrary}
+      />
     );
   }
 
   return (
-    <div ref={shellRef} style={shellStyle}>
-      {/* DARK TOOLBAR - Chrome-like */}
-      <div style={toolbarStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div onClick={() => setLibraryOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 4, backgroundColor: '#2b2b2b', cursor: 'pointer', color: '#fff', border: '1px solid #5C5C5C' }}>
-                    <div style={{ fontSize: 16 }}>{selectedFile?.type === 'pdf' ? '📕' : selectedFile?.type === 'docx' ? '📘' : ''}</div>
-                    <div style={{ fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedFile?.name}</div>
-                  </div>
-
-                  <button onClick={() => setLibraryOpen(true)} style={{ padding: '6px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', border: '1px solid #5C5C5C', backgroundColor: '#4C4C4C', color: '#fff' }}>
-                    Library
-                  </button>
-                </div>
-              </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <button
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPageFromManualAction(Math.max(1, currentPage - 1))}
-            style={{ ...toolbarButtonStyle, opacity: currentPage <= 1 ? 0.5 : 1 }}
-            title="Previous page"
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            ◀
-          </button>
-          
-          <input
-            type="text"
-            inputMode="numeric"
-            value={pageInput}
-            onChange={(e) => {
-              // Only allow digits in the input to keep it simple while typing
-              const cleaned = e.target.value.replace(/[^0-9]/g, '');
-              setPageInput(cleaned);
-            }}
-            onKeyDown={(e) => {
-              // Prevent arrow keys from incrementing/decrementing the number input
-              if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                e.preventDefault();
-                return;
-              }
-
-              if (e.key === 'Escape') {
-                setPageInput(String(currentPage));
-                e.currentTarget.blur();
-                return;
-              }
-
-              if (e.key !== 'Enter') return;
-
-              const val = parseInt(pageInput, 10);
-              if (!isNaN(val) && val >= 1 && val <= totalPages) {
-                setCurrentPageFromManualAction(val);
-              } else {
-                setPageInput(String(currentPage));
-              }
-            }}
-            // Prevent mouse wheel from changing any accidental focus behavior
-            onWheel={(e) => { e.preventDefault(); }}
-            style={{ width: '50px', padding: '6px 8px', borderRadius: '4px', border: '1px solid #5C5C5C', backgroundColor: '#4C4C4C', color: '#fff', fontSize: '13px', textAlign: 'center', fontWeight: '500' }}
-          />
-          
-          <span style={{ color: '#fff', fontSize: '13px', minWidth: '40px', textAlign: 'center' }}>/ {totalPages}</span>
-          
-          <button
-            disabled={currentPage >= totalPages}
-            onClick={() => setCurrentPageFromManualAction(Math.min(totalPages, currentPage + 1))}
-            style={{ ...toolbarButtonStyle, opacity: currentPage >= totalPages ? 0.5 : 1 }}
-            title="Next page"
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            ▶
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <SignInButton />
-          <button
-            onClick={() => setZoom(z => Math.max(50, z - 10))}
-            style={toolbarButtonStyle}
-            title="Zoom out"
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            −
-          </button>
-
-          <input 
-            type="number"
-            min={50}
-            max={200}
-            value={zoom}
-            onChange={(e) => {
-              const val = parseInt(e.target.value, 10);
-              if (!isNaN(val) && val >= 50 && val <= 200) {
-                setZoom(val);
-              }
-            }}
-            style={{ width: '50px', padding: '6px 8px', borderRadius: '4px', border: '1px solid #5C5C5C', backgroundColor: '#4C4C4C', color: '#fff', fontSize: '13px', textAlign: 'center', fontWeight: '500' }}
-          />
-
-          <button
-            onClick={() => setZoom(100)}
-            style={{ ...toolbarButtonStyle, fontSize: '14px', fontWeight: 'bold' }}
-            title="Reset zoom"
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            ↺
-          </button>
-
-          <button
-            onClick={() => setZoom(z => Math.min(200, z + 10))}
-            style={toolbarButtonStyle}
-            title="Zoom in"
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            +
-          </button>
-
-          <div style={{ width: '1px', height: '24px', backgroundColor: '#5C5C5C' }} />
-
-          <button
-            onClick={() => {
-              if (viewMode === 'single') {
-                // mark upcoming mode change as a manual page-change so viewers
-                // won't immediately override the current page while they mount
-                pageChangeSourceRef.current = 'manual';
-                setViewMode('scroll');
-              } else {
-                setViewMode('single');
-              }
-            }}
-            style={toolbarButtonStyle}
-            title={viewMode === 'scroll' ? 'Switch to single page view' : 'Switch to continuous scroll view'}
-            aria-label={viewMode === 'scroll' ? 'Switch to single page view' : 'Switch to continuous scroll view'}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            {viewMode === 'scroll' ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>≡</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Scroll</span>
-              </span>
-            ) : (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 14 }}>▢</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Single</span>
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={toggleFullPage}
-            style={toolbarButtonStyle}
-            title={isFullPage ? 'Exit fullscreen' : 'Fullscreen'}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            {isFullPage ? '⛶' : '⛶'}
-          </button>
-
-          <div style={{ width: '1px', height: '24px', backgroundColor: '#5C5C5C' }} />
-
-          <div ref={menuRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => {
-                setMenuOpen(!menuOpen);
-                setMenuHover(null);
-              }}
-              style={toolbarButtonStyle}
-              title="More options"
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-            >
-              ⋯
-            </button>
-
-            {menuOpen && (
-              <div style={{ 
-                position: 'absolute', 
-                top: '100%', 
-                right: 0, 
-                marginTop: '4px',
-                minWidth: '160px',
-                padding: '8px', 
-                backgroundColor: 'rgba(15, 23, 42, 0.82)', 
-                borderRadius: '6px', 
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.24)',
-                zIndex: 1000
-              }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <button
-                    type="button"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      setMenuHover(null);
-                      setMenuOpen(false);
-                      setNotesOpen(true);
-                    }}
-                    onMouseEnter={() => setMenuHover('notes')}
-                    onMouseLeave={() => setMenuHover(null)}
-                    style={{ 
-                      width: '100%',
-                      padding: '10px 12px', 
-                      borderRadius: '4px', 
-                      cursor: 'pointer', 
-                      fontSize: '13px', 
-                      fontWeight: '500', 
-                      border: 'none',
-                      backgroundColor: menuHover === 'notes' ? 'rgba(96, 165, 250, 0.22)' : 'transparent',
-                      color: menuHover === 'notes' ? '#ffffff' : '#dbeafe',
-                      textAlign: 'left'
-                    }}
-                  >
-                    Notes
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMenuHover(null);
-                      setMenuOpen(false);
-                      setInfoOpen(true);
-                    }}
-                    onMouseEnter={() => setMenuHover('info')}
-                    onMouseLeave={() => setMenuHover(null)}
-                    style={{ 
-                      width: '100%',
-                      padding: '10px 12px', 
-                      borderRadius: '4px', 
-                      cursor: 'pointer', 
-                      fontSize: '13px', 
-                      fontWeight: '500', 
-                      border: 'none',
-                      backgroundColor: menuHover === 'info' ? 'rgba(96, 165, 250, 0.22)' : 'transparent',
-                      color: menuHover === 'info' ? '#ffffff' : '#dbeafe',
-                      textAlign: 'left'
-                    }}
-                  >
-                    Info
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMenuHover(null);
-                      setMenuOpen(false);
-                      void handleSyncData();
-                    }}
-                    onMouseEnter={() => setMenuHover(null)}
-                    onMouseLeave={() => setMenuHover(null)}
-                    style={{ 
-                      width: '100%',
-                      padding: '10px 12px', 
-                      borderRadius: '4px', 
-                      cursor: 'pointer', 
-                      fontSize: '13px', 
-                      fontWeight: '500', 
-                      border: 'none',
-                      backgroundColor: 'transparent',
-                      color: '#dbeafe',
-                      textAlign: 'left'
-                    }}
-                  >
-                    Save progress
-                  </button>
-                  <div style={{ padding: '10px 12px 2px', fontSize: '12px', lineHeight: 1.4, color: '#94a3b8', borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '6px' }}>
-                    {syncStatus}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {libraryOpen && (
-        <LibraryPanel
-          files={library}
-          onClose={() => setLibraryOpen(false)}
-          onSelect={async (file) => {
-            await saveCurrentProgressIfNeeded();
-            isDocumentHydratingRef.current = true;
-            setSelectedFile(file);
-            // setCurrentPageFromManualAction(1);
-            // setTotalPages(file.totalPages || 1);
-            await refreshLibrary();
-            setLibraryOpen(false);
-          }}
-          onRemove={handleRemoveFileFromLibrary}
-        />
-      )}
-
-      {infoOpen && (
-        <InfoModal
-          file={selectedFile}
-          totalPages={totalPages}
-          onClose={() => setInfoOpen(false)}
-        />
-      )}
-
-      {/* CONTENT AREA */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, width: '100%' }}>
-        <div ref={viewportRef} style={{ ...viewportStyle, width: 'auto', minWidth: 0, flex: 1, height: '100%' }}>
-          {selectedFile?.type === 'txt' && (
-            <TxtViewer
-              file={selectedFile}
-              currentPage={currentPage}
-              zoom={zoom}
-              onTotalPagesChange={setTotalPages}
-              viewMode={viewMode}
-              onCurrentPageChange={setCurrentPageFromScroll}
-              scrollContainerRef={viewportRef}
-              pageChangeSourceRef={pageChangeSourceRef}
-              highlightsByPage={notesByPage}
-              selectedHighlightId={selectedHighlightId}
-              onSelectHighlight={handleSelectHighlight}
-            />
-          )}
-          {selectedFile?.type === 'pdf' && (
-            <PdfViewer
-              file={selectedFile}
-              currentPage={currentPage}
-              zoom={zoom}
-              onTotalPagesChange={setTotalPages}
-              viewMode={viewMode}
-              onCurrentPageChange={setCurrentPageFromScroll}
-              scrollContainerRef={viewportRef}
-              pageChangeSourceRef={pageChangeSourceRef}
-              highlightsByPage={notesByPage}
-              selectedHighlightId={selectedHighlightId}
-              onSelectHighlight={handleSelectHighlight}
-            />
-          )}
-          {selectedFile?.type === 'docx' && (
-            <DocxViewer
-              file={selectedFile}
-              currentPage={currentPage}
-              zoom={zoom}
-              onTotalPagesChange={setTotalPages}
-              onStatusChange={setSyncStatus}
-              viewMode={viewMode}
-              onCurrentPageChange={setCurrentPageFromScroll}
-              scrollContainerRef={viewportRef}
-              pageChangeSourceRef={pageChangeSourceRef}
-              highlightsByPage={notesByPage}
-              selectedHighlightId={selectedHighlightId}
-              onSelectHighlight={handleSelectHighlight}
-            />
-          )}
-        </div>
-
-        {notesOpen && (
-          <NotesSidebar
-            currentPage={currentPage}
-            totalPages={totalPages}
-            width={notesPanelWidth}
-            note={notesText}
-            highlights={currentHighlights}
-            selectedHighlightId={selectedHighlightId}
-            onSelectHighlight={(id) => setSelectedHighlightId(id)}
-            onClose={() => setNotesOpen(false)}
-            onResizeMouseDown={handleNotesResizeMouseDown}
-            onNoteChange={(value) => updatePageNote(currentPage, value)}
-            onHighlightCommentChange={(highlightId, comment) => updateHighlightComment(currentPage, highlightId, comment)}
-            onRemoveHighlight={(highlightId) => removeHighlight(currentPage, highlightId)}
-            onRenameHighlight={(highlightId, name) => renameHighlight(currentPage, highlightId, name)}
-          />
-        )}
-      </div>
-
-    </div>
+    <ReaderWorkspace
+      shellRef={shellRef}
+      viewportRef={viewportRef}
+      pageChangeSourceRef={pageChangeSourceRef}
+      selectedFile={selectedFile}
+      activeLibrary={library}
+      libraryOpen={libraryOpen}
+      infoOpen={infoOpen}
+      currentPage={currentPage}
+      pageInput={pageInput}
+      zoom={zoom}
+      viewMode={viewMode}
+      isFullPage={isFullPage}
+      userId={userId}
+      syncStatus={syncStatus}
+      notesOpen={notesOpen}
+      notesPanelWidth={notesPanelWidth}
+      notesText={notesText}
+      currentHighlights={currentHighlights}
+      totalPages={totalPages}
+      selectedHighlightId={selectedHighlightId}
+      notesByPage={notesByPage}
+      onOpenLibrary={() => setLibraryOpen(true)}
+      onCloseLibrary={() => setLibraryOpen(false)}
+      onSelectLibraryFile={openFileForCurrentSession}
+      onRemoveLibraryFile={handleRemoveFileFromLibrary}
+      onSetCurrentPageFromManualAction={setCurrentPageFromManualAction}
+      onSetCurrentPageFromScroll={setCurrentPageFromScroll}
+      onSetPageInput={setPageInput}
+      onSetZoom={setZoom}
+      onSetViewMode={setViewMode}
+      onToggleFullPage={toggleFullPage}
+      onSignOut={handleSignOut}
+      onOpenNotes={() => setNotesOpen(true)}
+      onOpenInfo={() => setInfoOpen(true)}
+      onCloseInfo={() => setInfoOpen(false)}
+      onSaveProgress={() => void handleSyncData()}
+      onSetTotalPages={setTotalPages}
+      onSetSyncStatus={setSyncStatus}
+      onSetSelectedHighlightId={setSelectedHighlightId}
+      onCloseNotes={() => setNotesOpen(false)}
+      onResizeNotesMouseDown={handleNotesResizeMouseDown}
+      onUpdateNote={(value) => updatePageNote(currentPage, value)}
+      onUpdateHighlightComment={(highlightId, comment) => updateHighlightComment(currentPage, highlightId, comment)}
+      onRemoveHighlight={(highlightId) => removeHighlight(currentPage, highlightId)}
+      onRenameHighlight={(highlightId, name) => renameHighlight(currentPage, highlightId, name)}
+    />
   );
 }
 

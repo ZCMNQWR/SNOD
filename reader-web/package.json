@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.5",
     "axios": "^1.16.1",
     "docx-preview": "^0.3.7",
     "puppeteer": "^25.0.4",

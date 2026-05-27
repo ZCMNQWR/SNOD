@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { renderAsync } from 'docx-preview';
 import { getFileStreamUrl } from '../services/api';
 import type { AvailableFile } from '../services/api';
-import type { NotesByPage, HighlightEntry } from '../types/notes'; // Added this import
+import type { NotesByPage, HighlightEntry } from '../types/notes';
 
 interface DocxViewerProps {
   file: AvailableFile;
@@ -14,7 +14,6 @@ interface DocxViewerProps {
   onCurrentPageChange: (page: number) => void;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   pageChangeSourceRef: RefObject<'manual' | 'scroll' | null>;
-  // Added the highlight props
   highlightsByPage?: NotesByPage;
   selectedHighlightId?: string | null;
   onSelectHighlight?: (id: string | null) => void;
@@ -54,7 +53,14 @@ export function DocxViewer({
     async function loadAndCompileDocx() {
       try {
         onStatusChange('Parsing physical Word page breaks...');
-        const response = await fetch(getFileStreamUrl(file.id));
+        const token = localStorage.getItem('OAUTH_TOKEN');
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+        }
+        const response = await fetch(getFileStreamUrl(file.id), {
+          headers
+        });
         const blob = await response.blob();
         
         if (docxContainerRef.current) {
@@ -289,7 +295,7 @@ export function DocxViewer({
         }
       });
     }
-  }, [currentPage, file, viewMode, renderVersion]); // Note: added renderVersion here so it runs after parse
+  }, [currentPage, file, viewMode, renderVersion]);
 
   // Scroll to page when currentPage changes in scroll mode
   useEffect(() => {
@@ -311,7 +317,7 @@ export function DocxViewer({
     }
     // If the element doesn't exist, we DO NOT clear the lock.
     // The effect will re-run automatically when renderVersion updates.
-  }, [currentPage, pageChangeSourceRef, viewMode, renderVersion]); // <-- Added renderVersion here
+  }, [currentPage, pageChangeSourceRef, viewMode, renderVersion]);
 
   // Scroll observer
   useEffect(() => {

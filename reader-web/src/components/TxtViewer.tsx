@@ -180,7 +180,10 @@ export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMod
   useEffect(() => {
     async function loadTxtFile() {
       try {
-        const response = await fetch(getFileStreamUrl(file.id));
+        const token = localStorage.getItem('OAUTH_TOKEN');
+        const response = await fetch(getFileStreamUrl(file.id), {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
         const fullText = await response.text();
         const pages = splitTextIntoPages(fullText);
         setTxtPages(pages);

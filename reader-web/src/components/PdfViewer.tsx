@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type RefObject } from 'react';
+import axios from 'axios';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { getFileStreamUrl } from '../services/api';
 import type { AvailableFile } from '../services/api';
@@ -39,6 +40,8 @@ export function PdfViewer({
 }: PdfViewerProps) {
   const [numPages, setNumPages] = useState<number>(1);
   const [textRenderVersion, setTextRenderVersion] = useState(0);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const handleTextLayerRendered = useCallback(() => {
     setTextRenderVersion(v => v + 1);
@@ -193,12 +196,10 @@ export function PdfViewer({
       if (element) {
         element.scrollIntoView({ behavior: 'auto', block: 'start' });
         
-        // REVISION 1: Re-fire the scroll slightly later to fight layout shifts
         const reScrollTimer = setTimeout(() => {
           element.scrollIntoView({ behavior: 'auto', block: 'start' });
         }, 150);
 
-        // REVISION 2: Hold the lock much longer so the observer ignores the massive layout shifts
         const unlockTimer = setTimeout(() => {
           if (pageChangeSourceRef.current === 'manual') {
             pageChangeSourceRef.current = null;
@@ -265,25 +266,65 @@ export function PdfViewer({
     };
   }, [currentPage, numPages, onCurrentPageChange, scrollContainerRef, viewMode, pageChangeSourceRef]);
 
-  // REVISION 3: Calculate dynamic height placeholder
   const pageWidth = Math.max(200, 600 * zoom / 100);
   const estimatedPageHeight = pageWidth * 1.3; // Standard 8.5x11 aspect ratio
+
+  // Memoize the options object so it doesn't recreate every render and trigger unnecessary reloads
+  const token = localStorage.getItem('OAUTH_TOKEN') || '';
+  const options = useMemo(() => {
+    if (!token) return { httpHeaders: {} };
+    const auth = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+    return { httpHeaders: { Authorization: auth } };
+  }, [token]);
+
+  // Fetch the PDF as an authenticated ArrayBuffer and create a blob URL for react-pdf to consume
+  useEffect(() => {
+    let cancelled = false;
+    let currentBlobUrl: string | null = null;
+
+    const fetchPdf = async () => {
+      setLoadError(null);
+      try {
+        const url = getFileStreamUrl(file.id);
+        const res = await axios.get(url, { responseType: 'arraybuffer' });
+        if (cancelled) return;
+        const blob = new Blob([res.data], { type: 'application/pdf' });
+        currentBlobUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(currentBlobUrl);
+      } catch (err: any) {
+        if (!cancelled) {
+          setLoadError(err?.response?.status === 403 ? 'forbidden' : 'failed');
+          setPdfBlobUrl(null);
+        }
+      }
+    };
+
+    fetchPdf();
+
+    return () => {
+      cancelled = true;
+      if (currentBlobUrl) {
+        URL.revokeObjectURL(currentBlobUrl);
+      }
+      setPdfBlobUrl(null);
+    };
+  }, [file.id]);
 
   return (
     <div style={{ display: 'flex', justifyContent: viewMode === 'scroll' ? 'flex-start' : 'center', minHeight: '100%', flexDirection: 'column', alignItems: 'center' }}>
       <Document
-        file={getFileStreamUrl(file.id)}
+        file={pdfBlobUrl || getFileStreamUrl(file.id)}
+        options={options}
         onLoadSuccess={({ numPages: loadedNumPages }) => {
           setNumPages(loadedNumPages);
           onTotalPagesChange(loadedNumPages);
         }}
         loading={<div style={{ padding: '20px' }}>Loading PDF...</div>}
-        error={<div style={{ padding: '20px' }}>Failed to load PDF.</div>}
+        error={<div style={{ padding: '20px' }}>{loadError === 'forbidden' ? 'Forbidden: check your auth token' : 'Failed to load PDF.'}</div>}
       >
         {viewMode === 'scroll' ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '20px' }}>
             {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-              // REVISION 4: Added minHeight and width to the wrapper div
               <div 
                 key={pageNum} 
                 id={`pdf-page-${pageNum}`} 

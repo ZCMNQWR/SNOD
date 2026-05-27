@@ -19,8 +19,10 @@ export default function LibraryPanel(props: {
   onClose: () => void;
   onSelect: (file: AvailableFile) => void;
   onRemove: (file: AvailableFile) => Promise<boolean>;
+  canUpload?: boolean;
+  maxUploadBytes?: number;
 }) {
-  const { files, onClose, onSelect, onRemove } = props;
+  const { files, onClose, onSelect, onRemove, canUpload = true, maxUploadBytes = 200 * 1024 * 1024 } = props;
   const [query, setQuery] = useState('');
   const [uploading, setUploading] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AvailableFile | null>(null);
@@ -62,6 +64,10 @@ export default function LibraryPanel(props: {
     return '';
   };
 
+  const uploadLimitMb = Math.max(1, Math.round(maxUploadBytes / 1024 / 1024));
+
+  const uploadBlockedMessage = 'Upload is not available right now.';
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={onClose}>
       <div style={{ width: '80%', maxWidth: '900px', height: '80%', background: '#121212', color: '#fff', borderRadius: 8, padding: 16, boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
@@ -71,8 +77,14 @@ export default function LibraryPanel(props: {
             const f = e.target.files?.[0];
             if (!f) return;
             
-            if (f.size > 200 * 1024 * 1024) {
-              alert(`File "${f.name}" is too large! Maximum upload size is 200MB.`);
+            if (!canUpload) {
+              alert(uploadBlockedMessage);
+              if (inputRef.current) inputRef.current.value = '';
+              return;
+            }
+
+            if (f.size > maxUploadBytes) {
+              alert(`File "${f.name}" is too large! Maximum upload size is ${uploadLimitMb}MB.`);
               if (inputRef.current) inputRef.current.value = '';
               return;
             }
@@ -98,7 +110,13 @@ export default function LibraryPanel(props: {
               if (inputRef.current) inputRef.current.value = '';
             }
           }} />
-          <button onClick={() => inputRef.current?.click()} disabled={uploading} style={{ padding: '8px 12px', borderRadius: 6, background: '#2b2b2b', color: '#fff', border: 'none', cursor: 'pointer' }}>{uploading ? 'Uploading...' : '[+] Add'}</button>
+          <button onClick={() => {
+            if (!canUpload) {
+              alert(uploadBlockedMessage);
+              return;
+            }
+            inputRef.current?.click();
+          }} disabled={uploading || !canUpload} style={{ padding: '8px 12px', borderRadius: 6, background: '#2b2b2b', color: '#fff', border: 'none', cursor: 'pointer', opacity: uploading || !canUpload ? 0.55 : 1 }}>{uploading ? 'Uploading...' : '[+] Add'}</button>
           <button onClick={onClose} style={{ padding: '8px 12px', borderRadius: 6, background: '#2b2b2b', color: '#fff', border: 'none', cursor: 'pointer' }}>Close</button>
         </div>
 

@@ -4,6 +4,26 @@ import axios from 'axios';
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 const PROGRESS_API_URL = `${BACKEND_URL}/api/progress`;
 
+// Attach the Google OAuth JWT for ALL requests so we can access our private library
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('OAUTH_TOKEN');
+  if (token) {
+    config.headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
+  }
+  return config;
+});
+
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      alert('Unauthorized: Your session expired or you used the wrong Google account.');
+      localStorage.removeItem('OAUTH_TOKEN');
+    }
+    return Promise.reject(error);
+  }
+);
+
 // This defines the structure of data React expects to send/receive
 export interface DocumentProgress {
   id?: number;
@@ -69,9 +89,7 @@ export async function uploadFile(file: File): Promise<AvailableFile> {
   try {
     const form = new FormData();
     form.append('file', file);
-    const response = await axios.post(`${BACKEND_URL}/api/files/upload`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
+    const response = await axios.post(`${BACKEND_URL}/api/files/upload`, form);
     return response.data;
   } catch (err) {
     console.error('Upload failed', err);
