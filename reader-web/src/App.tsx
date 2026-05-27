@@ -157,7 +157,6 @@ function App() {
       return;
     }
 
-    setSyncStatus('Connecting...');
     void Promise.resolve().then(() => {
       setSyncStatus('Connecting...');
       return refreshLibrary(true);
@@ -335,7 +334,7 @@ function App() {
   // Handle Swapping Files
   const saveCurrentProgressIfNeeded = async () => {
     if (!selectedFile) return;
-    const fileToSave = selectedFile; // capture current file to avoid races when selectedFile changes
+    const fileToSave = selectedFile;
     try {
       await saveProgress({
         userId,
@@ -369,13 +368,10 @@ function App() {
       isDocumentHydratingRef.current = true;
       const data = await getProgress(progressUserId, selectedFile!.id);
       if (data) {
-        // Don't immediately set the page if viewer hasn't reported total pages yet.
         const loadedPage = data.currentPage;
-        // fetched progress for selected document
         if (totalPages && totalPages > 0 && loadedPage >= 1 && loadedPage <= totalPages) {
           setCurrentPageFromManualAction(loadedPage);
         } else {
-          // Defer applying until viewer reports totalPages
           pendingLoadedPageRef.current = loadedPage;
         }
         if (data.syncDataJson) {
@@ -413,15 +409,13 @@ function App() {
     const pending = pendingLoadedPageRef.current;
     if (pending && totalPages && totalPages > 0) {
       const clamped = Math.min(Math.max(1, pending), totalPages);
-      // applying pending loaded page after totalPages reported
       setCurrentPageFromManualAction(clamped);
       pendingLoadedPageRef.current = null;
-      // If we're in scroll mode, also ensure the viewport scrolls to the page
+      
       if (viewMode === 'scroll') {
-        // page elements are named like txt/pdf/docx-page-N
         const idPrefix = selectedFile?.type || 'pdf';
         let attempts = 0;
-        const maxAttempts = 12; // ~1.8s total retries
+        const maxAttempts = 12;
 
         const tryScroll = () => {
           attempts += 1;
@@ -430,11 +424,9 @@ function App() {
             try {
               const container = viewportRef.current;
               if (container) {
-                // Compute element's offset relative to the scroll container and set scrollTop exactly
                 const elRect = el.getBoundingClientRect();
                 const containerRect = container.getBoundingClientRect();
                 const relativeTop = elRect.top - containerRect.top + container.scrollTop;
-                // Align element top to container top
                 container.scrollTo({ top: Math.max(0, Math.round(relativeTop)), behavior: 'auto' });
               } else {
                 el.scrollIntoView({ behavior: 'auto', block: 'start' });
@@ -442,21 +434,19 @@ function App() {
             } catch (e) {
               console.warn(e);
             }
-            // clear manual lock shortly after ensuring we've scrolled
+            
             setTimeout(() => {
               if (pageChangeSourceRef.current === 'manual') pageChangeSourceRef.current = null;
             }, 250);
             return true;
           }
           if (attempts >= maxAttempts) {
-            // give up and clear manual lock to avoid permanent lock
             if (pageChangeSourceRef.current === 'manual') pageChangeSourceRef.current = null;
             return true;
           }
           return false;
         };
 
-        // Try immediately and then poll until element appears
         if (!tryScroll()) {
           const intervalId = setInterval(() => {
             const done = tryScroll();
@@ -481,7 +471,6 @@ function App() {
 
     try {
       await saveProgress(payload);
-      // verify by fetching back the saved progress
       try {
         const confirmed = await getProgress(userId, selectedFile.id);
         if (confirmed && confirmed.currentPage === currentPage) {
@@ -597,15 +586,12 @@ function App() {
 
       if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
 
-      // Clone a range from the very start of the page up to exactly where the user started highlighting
       const preSelectionRange = range.cloneRange();
       preSelectionRange.selectNodeContents(pageElement);
       preSelectionRange.setEnd(range.startContainer, range.startOffset);
       
-      // Extract the text that comes *before* the highlight
       const preSelectionText = preSelectionRange.toString();
 
-      // Count how many times our selected text appears in the preceding text (Whitespace agnostic!)
       let occurrenceIndex = 0;
       const strippedPreSelection = preSelectionText.replace(/\s+/g, '').toLowerCase();
       const strippedSelected = selectedText.replace(/\s+/g, '').toLowerCase();
@@ -616,7 +602,7 @@ function App() {
         pos = strippedPreSelection.indexOf(strippedSelected, pos + 1);
       }
 
-      addHighlight(pageNumber, selectedText, occurrenceIndex); // Pass it down!
+      addHighlight(pageNumber, selectedText, occurrenceIndex);
       selection.removeAllRanges();
     };
 
@@ -637,684 +623,6 @@ function App() {
     );
   }
 
-  // 🌟 TypeScript Safety Guard: Stops execution if data is still fetching over the network
-  if (!selectedFile) {
-    return (
-      <DocumentLanding
-        activeLibrary={library}
-        libraryOpen={libraryOpen}
-        onOpenLibrary={() => setLibraryOpen(true)}
-        onCloseLibrary={() => setLibraryOpen(false)}
-        onRefreshLibrary={async () => {
-          setSyncStatus('Refreshing library...');
-          await refreshLibrary();
-        }}
-        onSelectFile={openFileForCurrentSession}
-        onRemoveFile={handleRemoveFileFromLibrary}
-      />
-    );
-  }
-
-  return (
-    <ReaderWorkspace
-      shellRef={shellRef}
-      viewportRef={viewportRef}
-      pageChangeSourceRef={pageChangeSourceRef}
-      selectedFile={selectedFile}
-      activeLibrary={library}
-      libraryOpen={libraryOpen}
-      infoOpen={infoOpen}
-      currentPage={currentPage}
-      pageInput={pageInput}
-      zoom={zoom}
-      viewMode={viewMode}
-      isFullPage={isFullPage}
-      userId={userId}
-      syncStatus={syncStatus}
-      notesOpen={notesOpen}
-      notesPanelWidth={notesPanelWidth}
-      notesText={notesText}
-      currentHighlights={currentHighlights}
-      totalPages={totalPages}
-      selectedHighlightId={selectedHighlightId}
-      notesByPage={notesByPage}
-      onOpenLibrary={() => setLibraryOpen(true)}
-      onCloseLibrary={() => setLibraryOpen(false)}
-      onSelectLibraryFile={openFileForCurrentSession}
-      onRemoveLibraryFile={handleRemoveFileFromLibrary}
-      onSetCurrentPageFromManualAction={setCurrentPageFromManualAction}
-      onSetCurrentPageFromScroll={setCurrentPageFromScroll}
-      onSetPageInput={setPageInput}
-      onSetZoom={setZoom}
-      onSetViewMode={setViewMode}
-      onToggleFullPage={toggleFullPage}
-      onSignOut={handleSignOut}
-      onOpenNotes={() => setNotesOpen(true)}
-      onOpenInfo={() => setInfoOpen(true)}
-      onCloseInfo={() => setInfoOpen(false)}
-      onSaveProgress={() => void handleSyncData()}
-      onSetTotalPages={setTotalPages}
-      onSetSyncStatus={setSyncStatus}
-      onSetSelectedHighlightId={setSelectedHighlightId}
-      onCloseNotes={() => setNotesOpen(false)}
-      onResizeNotesMouseDown={handleNotesResizeMouseDown}
-      onUpdateNote={(value) => updatePageNote(currentPage, value)}
-      onUpdateHighlightComment={(highlightId, comment) => updateHighlightComment(currentPage, highlightId, comment)}
-      onRemoveHighlight={(highlightId) => removeHighlight(currentPage, highlightId)}
-      onRenameHighlight={(highlightId, name) => renameHighlight(currentPage, highlightId, name)}
-    />
-  );
-}
-
-export default App;
-  const [userId, setUserId] = useState<string>(() => getStoredUserId());
-  const [isSignedIn, setIsSignedIn] = useState<boolean>(() => {
-    const token = localStorage.getItem('OAUTH_TOKEN');
-    return Boolean(token && token.startsWith('Bearer user:'));
-  });
-  
-  const [isFullPage, setIsFullPage] = useState<boolean>(false);
-  const [viewMode, setViewMode] = useState<'single' | 'scroll'>('scroll');
-  const [zoom, setZoom] = useState<number>(100);
-  const [notesOpen, setNotesOpen] = useState<boolean>(false);
-  const [notesPanelWidth, setNotesPanelWidth] = useState<number>(340);
-  
-  const [library, setLibrary] = useState<AvailableFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<AvailableFile | null>(null);
-  const [libraryOpen, setLibraryOpen] = useState<boolean>(false);
-  const [infoOpen, setInfoOpen] = useState<boolean>(false);
-
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageInput, setPageInput] = useState<string>('1');
-  const [totalPages, setTotalPages] = useState<number>(1);
-  const [notesByPage, setNotesByPage] = useState<NotesByPage>({});
-  const [syncStatus, setSyncStatus] = useState<string>('Connecting...');
-  const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
-
-  const AUTO_SAVE_DELAY_MS = 5000;
-
-  const shellRef = useRef<HTMLDivElement | null>(null);
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const pageChangeSourceRef = useRef<'manual' | 'scroll' | null>(null);
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notesResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const isDocumentHydratingRef = useRef<boolean>(false);
-  const pendingLoadedPageRef = useRef<number | null>(null);
-
-  const resetDocumentState = () => {
-    isDocumentHydratingRef.current = false;
-    pendingLoadedPageRef.current = null;
-    setSelectedFile(null);
-    setCurrentPage(1);
-    setPageInput('1');
-    setTotalPages(1);
-    setNotesByPage({});
-    setSelectedHighlightId(null);
-    setLibraryOpen(false);
-    setInfoOpen(false);
-  };
-
-  const handleSignOut = () => {
-    localStorage.removeItem('OAUTH_TOKEN');
-    setIsSignedIn(false);
-    setUserId('');
-    resetDocumentState();
-    setSyncStatus('Signed out.');
-  };
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullPage(document.fullscreenElement === shellRef.current);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
-  }, []);
-
-  // Load Dynamic Storage Library
-  const refreshLibrary = async (selectFirstIfNeeded = false): Promise<AvailableFile[]> => {
-    const files = await getAvailableFiles();
-    const defaultEpoch = new Date('2026-05-23T00:00:00Z').getTime();
-    const normalized = files.map(f => ({
-      ...f,
-      lastModifiedEpoch: f.lastModifiedEpoch || defaultEpoch,
-      lastModified: f.lastModified || new Date(f.lastModifiedEpoch || defaultEpoch).toISOString(),
-      addedEpoch: f.addedEpoch || defaultEpoch,
-    }));
-    normalized.sort((a, b) => (b.addedEpoch || b.lastModifiedEpoch || 0) - (a.addedEpoch || a.lastModifiedEpoch || 0));
-    setLibrary(normalized);
-    if (selectFirstIfNeeded && normalized.length > 0) {
-      isDocumentHydratingRef.current = true;
-      setSelectedFile(normalized[0]);
-    }
-
-    return normalized;
-  };
-
-  const handleRemoveFileFromLibrary = async (file: AvailableFile): Promise<boolean> => {
-    const wasSelected = selectedFile?.id === file.id;
-
-    if (wasSelected) {
-      setSelectedFile(null);
-      setCurrentPage(1);
-      setPageInput('1');
-      setTotalPages(1);
-      setNotesByPage({});
-      setSelectedHighlightId(null);
-    }
-
-    const refreshed = await refreshLibrary(wasSelected);
-
-    if (wasSelected) {
-      if (refreshed.length > 0) {
-        isDocumentHydratingRef.current = true;
-        setSelectedFile(refreshed[0]);
-      }
-
-      setCurrentPage(1);
-      setPageInput('1');
-      setTotalPages(1);
-      setNotesByPage({});
-      setSelectedHighlightId(null);
-      setLibraryOpen(false);
-    }
-
-    return !refreshed.some((entry) => entry.id === file.id);
-  };
-
-  useEffect(() => {
-    if (!isSignedIn) {
-      return;
-    }
-
-    setSyncStatus('Connecting...');
-    void Promise.resolve().then(() => {
-  setSyncStatus('Connecting...');
-  return refreshLibrary(true);
-})
-      .then((files) => {
-        if (files.length === 0) {
-          setSyncStatus('Connected — no files yet.');
-        } else {
-          setSyncStatus('Connected');
-        }
-      })
-      .catch(() => {
-        setSyncStatus('Connection failed.');
-      })
-    );
-  }, [isSignedIn]);
-
-
-  useEffect(() => {
-    void Promise.resolve().then(() => setPageInput(String(currentPage)));
-  }, [currentPage, selectedFile]);
-
-  useEffect(() => {
-    if (!selectedFile?.id) {
-      return;
-    }
-
-    if (isDocumentHydratingRef.current) {
-      return;
-    }
-
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-
-    autoSaveTimerRef.current = setTimeout(() => {
-      void saveProgress({
-        userId,
-        documentId: selectedFile.id,
-        documentType: selectedFile.type,
-        currentPage,
-        syncDataJson: JSON.stringify({ notesByPage })
-      }).then(() => {
-        setSyncStatus(`Auto-saved on Page ${currentPage}.`);
-      }).catch(() => {
-        setSyncStatus('Auto-save failed.');
-      });
-    }, AUTO_SAVE_DELAY_MS);
-
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [currentPage, notesByPage, selectedFile?.id, selectedFile?.type, userId]);
-
-  const setCurrentPageFromManualAction = (page: number) => {
-    pageChangeSourceRef.current = 'manual';
-    setCurrentPage(page);
-  };
-
-  const setCurrentPageFromScroll = (page: number) => {
-    pageChangeSourceRef.current = 'scroll';
-    setCurrentPage(page);
-  };
-
-  const getPageEntry = (page: number): PageNoteEntry => notesByPage[page] ?? { note: '', highlights: [] };
-
-  const updatePageNote = (page: number, note: string) => {
-    setNotesByPage((previous) => {
-      const next = { ...previous };
-      const currentEntry = next[page] ? { ...next[page] } : { note: '', highlights: [] };
-      currentEntry.note = note;
-
-      if (!note.trim() && currentEntry.highlights.length === 0) {
-        delete next[page];
-      } else {
-        next[page] = currentEntry;
-      }
-
-      return next;
-    });
-  };
-
-  const addHighlight = useCallback((page: number, text: string, occurrenceIndex: number) => {
-    const normalizedText = text.replace(/\s+/g, ' ').trim();
-    if (!normalizedText) return;
-
-    setNotesByPage((previous) => {
-      const next = { ...previous };
-      const currentEntry = next[page] ? { ...next[page] } : { note: '', highlights: [] };
-
-      const alreadyExists = currentEntry.highlights.some(h => h.text === normalizedText && h.occurrenceIndex === occurrenceIndex);
-
-      if (alreadyExists) return previous;
-
-      const highlight: HighlightEntry = {
-        id: crypto.randomUUID(),
-        page,
-        text: normalizedText,
-        comment: '',
-        createdAt: Date.now(),
-        occurrenceIndex,
-      };
-
-      currentEntry.highlights = [...currentEntry.highlights, highlight];
-      next[page] = currentEntry;
-      return next;
-    });
-  }, [setNotesByPage]);
-
-  const updateHighlightComment = (page: number, highlightId: string, comment: string) => {
-    setNotesByPage((previous) => {
-      const currentEntry = previous[page];
-      if (!currentEntry) {
-        return previous;
-      }
-
-      const updatedHighlights = currentEntry.highlights.map((highlight) => (
-        highlight.id === highlightId ? { ...highlight, comment } : highlight
-      ));
-
-      return {
-        ...previous,
-        [page]: {
-          ...currentEntry,
-          highlights: updatedHighlights,
-        },
-      };
-    });
-  };
-
-  const removeHighlight = (page: number, highlightId: string) => {
-    setNotesByPage((previous) => {
-      const currentEntry = previous[page];
-      if (!currentEntry) {
-        return previous;
-      }
-
-      const updatedHighlights = currentEntry.highlights.filter((highlight) => highlight.id !== highlightId);
-
-      if (!currentEntry.note.trim() && updatedHighlights.length === 0) {
-        const next = { ...previous };
-        delete next[page];
-        return next;
-      }
-
-      return {
-        ...previous,
-        [page]: {
-          ...currentEntry,
-          highlights: updatedHighlights,
-        },
-      };
-    });
-  };
-
-  const renameHighlight = (page: number, highlightId: string, customName: string) => {
-    setNotesByPage((previous) => {
-      const currentEntry = previous[page];
-      if (!currentEntry) return previous;
-
-      const updatedHighlights = currentEntry.highlights.map((highlight) => (
-        highlight.id === highlightId ? { ...highlight, customName } : highlight
-      ));
-
-      return {
-        ...previous,
-        [page]: { ...currentEntry, highlights: updatedHighlights },
-      };
-    });
-  };
-
-  const notesText = getPageEntry(currentPage).note;
-  const currentHighlights = getPageEntry(currentPage).highlights;
-
-  // Handle Swapping Files
-  const saveCurrentProgressIfNeeded = async () => {
-    if (!selectedFile) return;
-    const fileToSave = selectedFile; // capture current file to avoid races when selectedFile changes
-    try {
-      await saveProgress({
-        userId,
-        documentId: fileToSave.id,
-        documentType: fileToSave.type,
-        currentPage,
-        syncDataJson: JSON.stringify({ notesByPage })
-      });
-      setSyncStatus(`Saved progress for ${fileToSave.name} on Page ${currentPage}.`);
-    } catch (err) {
-      console.warn(err);
-      setSyncStatus('Failed to save progress before switching file.');
-    }
-  };
-
-  // Cloud Progress Syncing Coordinates
-  useEffect(() => {
-    if (!selectedFile?.id) return;
-    const progressUserId = userId;
-
-    if (!progressUserId) {
-  queueMicrotask(() => {
-    setNotesByPage({});
-    setCurrentPageFromManualAction(1);
-    setSyncStatus('Signed out.');
-  });
-  return;
-}
-
-
-    async function fetchServerState() {
-      isDocumentHydratingRef.current = true;
-      const data = await getProgress(progressUserId, selectedFile!.id);
-      if (data) {
-        // Don't immediately set the page if viewer hasn't reported total pages yet.
-        const loadedPage = data.currentPage;
-        // fetched progress for selected document
-        if (totalPages && totalPages > 0 && loadedPage >= 1 && loadedPage <= totalPages) {
-          setCurrentPageFromManualAction(loadedPage);
-        } else {
-          // Defer applying until viewer reports totalPages
-          pendingLoadedPageRef.current = loadedPage;
-        }
-        if (data.syncDataJson) {
-          try {
-            const parsed = JSON.parse(data.syncDataJson);
-            if (parsed.notesByPage) {
-              setNotesByPage(parsed.notesByPage as NotesByPage);
-            } else if (parsed.comments) {
-              setNotesByPage({
-                [data.currentPage]: {
-                  note: parsed.comments || '',
-                  highlights: [],
-                },
-              });
-            } else {
-              setNotesByPage({});
-            }
-          } catch (e) {
-            console.warn(e);
-          }
-        }
-        setSyncStatus(`Page snapshot loaded!`);
-      } else {
-        setNotesByPage({});
-        setCurrentPageFromManualAction(1);
-        setSyncStatus('Fresh snapshot created.');
-      }
-      isDocumentHydratingRef.current = false;
-    }
-    fetchServerState();
-  }, [userId, selectedFile, totalPages]);
-
-  // Apply pending loaded page when totalPages becomes available
-  useEffect(() => {
-    const pending = pendingLoadedPageRef.current;
-    if (pending && totalPages && totalPages > 0) {
-      const clamped = Math.min(Math.max(1, pending), totalPages);
-      // applying pending loaded page after totalPages reported
-      setCurrentPageFromManualAction(clamped);
-      pendingLoadedPageRef.current = null;
-      // If we're in scroll mode, also ensure the viewport scrolls to the page
-      if (viewMode === 'scroll') {
-        // page elements are named like txt/pdf/docx-page-N
-        const idPrefix = selectedFile?.type || 'pdf';
-        let attempts = 0;
-        const maxAttempts = 12; // ~1.8s total retries
-
-        const tryScroll = () => {
-          attempts += 1;
-          const el = document.getElementById(`${idPrefix}-page-${clamped}`);
-          if (el) {
-            try {
-              const container = viewportRef.current;
-              if (container) {
-                // Compute element's offset relative to the scroll container and set scrollTop exactly
-                const elRect = el.getBoundingClientRect();
-                const containerRect = container.getBoundingClientRect();
-                const relativeTop = elRect.top - containerRect.top + container.scrollTop;
-                // Align element top to container top
-                container.scrollTo({ top: Math.max(0, Math.round(relativeTop)), behavior: 'auto' });
-              } else {
-                el.scrollIntoView({ behavior: 'auto', block: 'start' });
-              }
-            } catch (e) {
-               
-              console.warn(e);
-            }
-            // clear manual lock shortly after ensuring we've scrolled
-            setTimeout(() => {
-              if (pageChangeSourceRef.current === 'manual') pageChangeSourceRef.current = null;
-            }, 250);
-            return true;
-          }
-          if (attempts >= maxAttempts) {
-            // give up and clear manual lock to avoid permanent lock
-            if (pageChangeSourceRef.current === 'manual') pageChangeSourceRef.current = null;
-            return true;
-          }
-          return false;
-        };
-
-        // Try immediately and then poll until element appears
-        if (!tryScroll()) {
-          const intervalId = setInterval(() => {
-            const done = tryScroll();
-            if (done) clearInterval(intervalId);
-          }, 150);
-        }
-      }
-    }
-  }, [totalPages, selectedFile?.type, viewMode, pageChangeSourceRef, viewportRef]);
-
-  const handleSyncData = async () => {
-    if (!selectedFile) return;
-    setSyncStatus('Syncing progress...');
-    
-    const payload: DocumentProgress = {
-      userId,
-      documentId: selectedFile.id,
-      documentType: selectedFile.type,
-      currentPage,
-      syncDataJson: JSON.stringify({ notesByPage })
-    };
-
-    try {
-      await saveProgress(payload);
-      // verify by fetching back the saved progress
-      try {
-        const confirmed = await getProgress(userId, selectedFile.id);
-        if (confirmed && confirmed.currentPage === currentPage) {
-          setSyncStatus(`Saved on page ${currentPage}.`);
-        } else if (confirmed) {
-          setSyncStatus(`Saved but server has page ${confirmed.currentPage}.`);
-        } else {
-          setSyncStatus('Saved, but server returned no progress.');
-        }
-      } catch (e) {
-        console.warn('Verification failed', e);
-        setSyncStatus(`Saved (verification failed).`);
-      }
-    } catch (err) {
-      console.warn(err);
-      setSyncStatus('Sync broken.');
-    }
-  };
-
-  const toggleFullPage = async () => {
-    try {
-      if (document.fullscreenElement === shellRef.current) {
-        await document.exitFullscreen();
-        return;
-      }
-
-      if (shellRef.current?.requestFullscreen) {
-        await shellRef.current.requestFullscreen();
-        return;
-      }
-
-      setIsFullPage((current) => !current);
-    } catch (error) {
-      console.error('Unable to toggle full page mode.', error);
-      setIsFullPage((current) => !current);
-    }
-  };
-
-  const handleNotesResizeMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    notesResizeRef.current = {
-      startX: event.clientX,
-      startWidth: notesPanelWidth,
-    };
-  };
-
-  const openFileForCurrentSession = async (file: AvailableFile) => {
-    await saveCurrentProgressIfNeeded();
-    isDocumentHydratingRef.current = true;
-    setSelectedFile(file);
-    await refreshLibrary();
-  };
-
-  useEffect(() => {
-    if (!notesOpen) {
-      notesResizeRef.current = null;
-      return;
-    }
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!notesResizeRef.current || !shellRef.current) {
-        return;
-      }
-
-      const shellWidth = shellRef.current.getBoundingClientRect().width;
-      const nextWidth = shellWidth - event.clientX;
-      const minWidth = 280;
-      const maxWidth = Math.max(minWidth, Math.round(shellWidth * 0.6));
-
-      setNotesPanelWidth(Math.min(maxWidth, Math.max(minWidth, nextWidth)));
-    };
-
-    const handleMouseUp = () => {
-      notesResizeRef.current = null;
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [notesOpen]);
-
-  useEffect(() => {
-    if (!notesOpen || !viewportRef.current) return;
-    const viewport = viewportRef.current;
-
-    const handleMouseUp = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) return;
-
-      const selectedText = selection.toString().replace(/\s+/g, ' ').trim();
-      if (!selectedText) return;
-
-      const range = selection.getRangeAt(0);
-      let currentNode: Node | null = range.commonAncestorContainer;
-      let pageElement: HTMLElement | null = null;
-
-      while (currentNode && currentNode !== viewport) {
-        if (currentNode instanceof HTMLElement && /^(txt|pdf|docx)-page-\d+$/.test(currentNode.id)) {
-          pageElement = currentNode;
-          break;
-        }
-        currentNode = currentNode.parentNode;
-      }
-
-      if (!pageElement) return;
-
-      const pageMatch = pageElement.id.match(/-(\d+)$/);
-      const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : currentPage;
-
-      if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
-
-      // Clone a range from the very start of the page up to exactly where the user started highlighting
-      const preSelectionRange = range.cloneRange();
-      preSelectionRange.selectNodeContents(pageElement);
-      preSelectionRange.setEnd(range.startContainer, range.startOffset);
-      
-      // Extract the text that comes *before* the highlight
-      const preSelectionText = preSelectionRange.toString();
-
-      // Count how many times our selected text appears in the preceding text (Whitespace agnostic!)
-      let occurrenceIndex = 0;
-      const strippedPreSelection = preSelectionText.replace(/\s+/g, '').toLowerCase();
-      const strippedSelected = selectedText.replace(/\s+/g, '').toLowerCase();
-      
-      let pos = strippedPreSelection.indexOf(strippedSelected);
-      while (pos !== -1) {
-        occurrenceIndex++;
-        pos = strippedPreSelection.indexOf(strippedSelected, pos + 1);
-      }
-
-      addHighlight(pageNumber, selectedText, occurrenceIndex); // Pass it down!
-      selection.removeAllRanges();
-    };
-
-    viewport.addEventListener('mouseup', handleMouseUp);
-    return () => viewport.removeEventListener('mouseup', handleMouseUp);
-  }, [addHighlight, currentPage, notesOpen]);
-
-  if (!isSignedIn) {
-    return (
-      <AuthGate
-        onAuthenticated={(email, token, status) => {
-          localStorage.setItem('OAUTH_TOKEN', token);
-          setUserId(email);
-          setIsSignedIn(true);
-          setSyncStatus(status);
-        }}
-      />
-    );
-  }
-
-  // 🌟 TypeScript Safety Guard: Stops execution if data is still fetching over the network
   if (!selectedFile) {
     return (
       <DocumentLanding
