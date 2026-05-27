@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.CrossOrigin;
 
 import com.reader.reader_backend.model.FileRecord;
 import com.reader.reader_backend.repository.DocumentProgressRepository;
@@ -31,6 +32,7 @@ import com.reader.reader_backend.repository.FileRecordRepository;
 
 @RestController
 @RequestMapping("/api/files")
+@CrossOrigin(origins = "*")
 public class FileStorageController {
 
     private static final Logger logger = LoggerFactory.getLogger(FileStorageController.class);
