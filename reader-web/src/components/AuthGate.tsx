@@ -46,7 +46,7 @@ export default function AuthGate({ onAuthenticated }: AuthGateProps) {
     <>
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#121212', fontFamily: 'system-ui, sans-serif', padding: 24, boxSizing: 'border-box' }}>
         <div style={{ width: 'min(560px, 100%)', textAlign: 'center', padding: '40px 32px', backgroundColor: '#1e1e1e', borderRadius: '16px', boxShadow: '0 18px 50px rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <h1 style={{ margin: '0 0 10px 0', fontSize: '32px', color: '#fff' }}>Reader Web</h1>
+          <h1 style={{ margin: '0 0 10px 0', fontSize: '32px', color: '#fff' }}>SNOD: Sync Notes on Documents</h1>
           <p style={{ color: '#cbd5e1', marginBottom: '28px', lineHeight: 1.5 }}>
             Sign in to use your synced library.
           </p>
