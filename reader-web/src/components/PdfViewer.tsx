@@ -291,7 +291,7 @@ export function PdfViewer({
         const blob = new Blob([res.data], { type: 'application/pdf' });
         currentBlobUrl = URL.createObjectURL(blob);
         setPdfBlobUrl(currentBlobUrl);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
           setLoadError(err?.response?.status === 403 ? 'forbidden' : 'failed');
           setPdfBlobUrl(null);
