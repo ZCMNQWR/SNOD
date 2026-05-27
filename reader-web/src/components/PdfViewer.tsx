@@ -293,7 +293,7 @@ export function PdfViewer({
         setPdfBlobUrl(currentBlobUrl);
       } catch (err: unknown) {
         if (!cancelled) {
-          setLoadError(err?.response?.status === 403 ? 'forbidden' : 'failed');
+          setLoadError(axios.isAxiosError(err) && err.response?.status === 403 ? 'forbidden' : 'failed');
           setPdfBlobUrl(null);
         }
       }

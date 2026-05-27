@@ -36,7 +36,12 @@ export default function AuthGate({ onAuthenticated }: AuthGateProps) {
         setLoginError(path === 'login' ? 'Login failed' : 'Create account failed');
       }
     } catch (error: unknown) {
-      setLoginError(error?.response?.data?.message || `${path === 'login' ? 'Login' : 'Create account'} request failed`);
+      let errorMessage = `${path === 'login' ? 'Login' : 'Create account'} request failed`;
+      if (axios.isAxiosError(error)) {
+        const data = error.response?.data as { message?: string } | undefined;
+        errorMessage = data?.message || errorMessage;
+      }
+      setLoginError(errorMessage);
     } finally {
       setLoginLoading(false);
     }
