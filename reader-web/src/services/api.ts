@@ -4,9 +4,6 @@ import axios from 'axios';
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 const PROGRESS_API_URL = `${BACKEND_URL}/api/progress`;
 
-// Add this to bypass Ngrok's free tier browser warning interstitial page
-axios.defaults.headers.common['ngrok-skip-browser-warning'] = 'true';
-
 // This defines the structure of data React expects to send/receive
 export interface DocumentProgress {
   id?: number;

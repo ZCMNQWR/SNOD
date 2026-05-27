@@ -54,9 +54,7 @@ export function DocxViewer({
     async function loadAndCompileDocx() {
       try {
         onStatusChange('Parsing physical Word page breaks...');
-        const response = await fetch(getFileStreamUrl(file.id), {
-          headers: { 'ngrok-skip-browser-warning': 'true' }
-        });
+        const response = await fetch(getFileStreamUrl(file.id));
         const blob = await response.blob();
         
         if (docxContainerRef.current) {

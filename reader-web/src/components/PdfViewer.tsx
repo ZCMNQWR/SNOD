@@ -273,7 +273,6 @@ export function PdfViewer({
     <div style={{ display: 'flex', justifyContent: viewMode === 'scroll' ? 'flex-start' : 'center', minHeight: '100%', flexDirection: 'column', alignItems: 'center' }}>
       <Document
         file={getFileStreamUrl(file.id)}
-        options={{ httpHeaders: { 'ngrok-skip-browser-warning': 'true' } }}
         onLoadSuccess={({ numPages: loadedNumPages }) => {
           setNumPages(loadedNumPages);
           onTotalPagesChange(loadedNumPages);
