@@ -35,7 +35,7 @@ export default function AuthGate({ onAuthenticated }: AuthGateProps) {
       } else {
         setLoginError(path === 'login' ? 'Login failed' : 'Create account failed');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setLoginError(error?.response?.data?.message || `${path === 'login' ? 'Login' : 'Create account'} request failed`);
     } finally {
       setLoginLoading(false);
