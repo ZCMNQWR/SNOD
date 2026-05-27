@@ -18,7 +18,7 @@ import com.reader.reader_backend.repository.DocumentProgressRepository;
 
 @RestController
 @RequestMapping("/api/progress")
-@CrossOrigin(origins = {"http://localhost:5173", "https://ZCMNQWR.github.io"})
+@CrossOrigin(origins = {"http://localhost:5173", "https://ZCMNQWR.github.io", "https://zcmnqwr.github.io"})
 public class DocumentController {
 
     private static final Logger logger = LoggerFactory.getLogger(DocumentController.class);

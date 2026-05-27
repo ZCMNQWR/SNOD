@@ -180,7 +180,9 @@ export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMod
   useEffect(() => {
     async function loadTxtFile() {
       try {
-        const response = await fetch(getFileStreamUrl(file.id));
+        const response = await fetch(getFileStreamUrl(file.id), {
+          headers: { 'ngrok-skip-browser-warning': 'true' }
+        });
         const fullText = await response.text();
         const pages = splitTextIntoPages(fullText);
         setTxtPages(pages);
