@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-// This matches the exact address where your Spring Boot backend is listening
-const API_BASE_URL = 'http://localhost:8080/api/progress';
+// Use an environment variable for the backend URL, falling back to localhost for local development
+const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const PROGRESS_API_URL = `${BACKEND_URL}/api/progress`;
 
 // This defines the structure of data React expects to send/receive
 export interface DocumentProgress {
@@ -16,7 +17,7 @@ export interface DocumentProgress {
 // 1. Send your current reading page and comments to Spring Boot
 export const saveProgress = async (progress: DocumentProgress) => {
   try {
-    const response = await axios.post(API_BASE_URL, progress);
+    const response = await axios.post(PROGRESS_API_URL, progress);
     // saveProgress response handled by caller
     return response.data;
   } catch (error) {
@@ -28,7 +29,7 @@ export const saveProgress = async (progress: DocumentProgress) => {
 // 2. Load the saved reading progress from Spring Boot
 export const getProgress = async (userId: string, documentId: string) => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/${userId}/${documentId}`);
+    const response = await axios.get(`${PROGRESS_API_URL}/${userId}/${documentId}`);
     return response.data;
   } catch (error) {
     // If the database has never seen this document before, it returns a 404 error.
@@ -56,7 +57,7 @@ export interface AvailableFile {
 
 export async function getAvailableFiles(): Promise<AvailableFile[]> {
   try {
-    const response = await axios.get('http://localhost:8080/api/files');
+    const response = await axios.get(`${BACKEND_URL}/api/files`);
     return response.data;
   } catch (error) {
     console.error("Error mapping backend storage dir", error);
@@ -68,7 +69,7 @@ export async function uploadFile(file: File): Promise<AvailableFile> {
   try {
     const form = new FormData();
     form.append('file', file);
-    const response = await axios.post('http://localhost:8080/api/files/upload', form, {
+    const response = await axios.post(`${BACKEND_URL}/api/files/upload`, form, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
@@ -80,7 +81,7 @@ export async function uploadFile(file: File): Promise<AvailableFile> {
 
 export async function removeFile(filename: string, deleteRelatedData = true): Promise<void> {
   try {
-    await axios.delete(`http://localhost:8080/api/files/${encodeURIComponent(filename)}`, {
+    await axios.delete(`${BACKEND_URL}/api/files/${encodeURIComponent(filename)}`, {
       params: { deleteRelatedData },
     });
   } catch (err) {
@@ -94,5 +95,5 @@ export async function removeFile(filename: string, deleteRelatedData = true): Pr
 
 // Helper to get the absolute streaming URL for a specific file
 export function getFileStreamUrl(filename: string): string {
-  return `http://localhost:8080/api/files/download/${filename}`;
+  return `${BACKEND_URL}/api/files/download/${filename}`;
 }

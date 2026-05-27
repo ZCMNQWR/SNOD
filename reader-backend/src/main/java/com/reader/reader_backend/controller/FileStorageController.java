@@ -35,7 +35,7 @@ import com.reader.reader_backend.repository.FileRecordRepository;
 
 @RestController
 @RequestMapping("/api/files")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = {"http://localhost:5173", "https://ZCMNQWR.github.io"})
 public class FileStorageController {
 
     private static final Logger logger = LoggerFactory.getLogger(FileStorageController.class);
