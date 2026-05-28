@@ -215,14 +215,13 @@ export default function ReaderWorkspace({
           minHeight: 0, 
           width: '100%', 
           position: 'relative',
-          // MOBILE FIX: Stack sidebar vertically underneath on small viewports
           flexDirection: isMobile ? 'column' : 'row' 
         }}
       >
         <div 
           ref={viewportRef} 
           style={viewportStyle}
-          onClick={(e) => {
+          onClick={() => {
             if (isMobile) {
               setToolbarVisible((prev) => !prev);
             }
@@ -236,7 +235,7 @@ export default function ReaderWorkspace({
               justifyContent: 'flex-start', 
               width: '100%', 
               minHeight: '100%', 
-              padding: isMobile ? '8px' : '16px', // Milder dynamic margin on compact screens
+              padding: isMobile ? '8px' : '16px', 
               boxSizing: 'border-box'
             }}
           >
@@ -292,48 +291,6 @@ export default function ReaderWorkspace({
           </div>
         </div>
 
-        {/* RE-POSITIONED FLOATING HIGHLIGHT BUTTON */}
-        <button
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleHighlightMode();
-          }}
-          style={{
-            position: 'absolute',
-            // MOBILE FIX: Lower position to the toolbar line instead of floating on top of page content text nodes
-            bottom: isMobile ? '16px' : '32px',
-            right: (!isMobile && notesOpen) ? `${notesPanelWidth + 32}px` : isMobile ? '16px' : '32px',
-            padding: isMobile ? '0' : '0 20px',
-            width: isMobile ? '48px' : 'auto',
-            height: isMobile ? '48px' : '48px',
-            borderRadius: isMobile ? '24px' : '24px',
-            backgroundColor: isHighlightMode ? '#facc15' : '#1e293b',
-            color: isHighlightMode ? '#111827' : '#fff',
-            border: isHighlightMode ? '2px solid #eab308' : '2px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            cursor: 'pointer',
-            zIndex: isMobile ? 40 : 9999, // Ensure sheet overlays sit cleanly above it
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
-          title={isHighlightMode ? "Highlight Mode: ON" : "Highlight Mode: OFF"}
-          aria-label="Toggle Highlight Mode"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 11l-6 6v3h9l3-3" />
-            <path d="M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
-          </svg>
-          {!isMobile && (
-            <span style={{ fontWeight: 600, fontSize: '14px', whiteSpace: 'nowrap' }}>
-              Highlight
-            </span>
-          )}
-        </button>
-
         {notesOpen && (
           <NotesSidebar
             currentPage={currentPage}
@@ -352,6 +309,47 @@ export default function ReaderWorkspace({
           />
         )}
       </div>
+
+      {/* FIXED MOBILE VIEW HIGHLIGHT TOGGLE */}
+      <button
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleHighlightMode();
+        }}
+        style={{
+          position: 'fixed', 
+          bottom: isMobile ? '16px' : '32px',
+          right: (!isMobile && notesOpen) ? `${notesPanelWidth + 32}px` : '32px',
+          padding: isMobile ? '0' : '0 20px',
+          width: isMobile ? '48px' : 'auto',
+          height: isMobile ? '48px' : '48px',
+          borderRadius: isMobile ? '24px' : '24px',
+          backgroundColor: isHighlightMode ? '#facc15' : '#1e293b',
+          color: isHighlightMode ? '#111827' : '#fff',
+          border: isHighlightMode ? '2px solid #eab308' : '2px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+          zIndex: isMobile ? 40 : 9999, 
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        title={isHighlightMode ? "Highlight Mode: ON" : "Highlight Mode: OFF"}
+        aria-label="Toggle Highlight Mode"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 11l-6 6v3h9l3-3" />
+          <path d="M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
+        </svg>
+        {!isMobile && (
+          <span style={{ fontWeight: 600, fontSize: '14px', whiteSpace: 'nowrap' }}>
+            Highlight
+          </span>
+        )}
+      </button>
     </div>
   );
 }
