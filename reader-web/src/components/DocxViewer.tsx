@@ -14,7 +14,7 @@ interface DocxViewerProps {
   onCurrentPageChange: (page: number) => void;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   pageChangeSourceRef: RefObject<'manual' | 'scroll' | null>;
-  manualScrollNonce: number; // Added tracking nonce prop
+  manualScrollNonce: number;
   highlightsByPage?: NotesByPage;
   selectedHighlightId?: string | null;
   onSelectHighlight?: (id: string | null) => void;
@@ -30,7 +30,7 @@ export function DocxViewer({
   onCurrentPageChange, 
   scrollContainerRef, 
   pageChangeSourceRef,
-  manualScrollNonce, // Destructured nonce
+  manualScrollNonce,
   highlightsByPage,
   selectedHighlightId,
   onSelectHighlight
@@ -97,9 +97,8 @@ export function DocxViewer({
       }
     }
     loadAndCompileDocx();
-  }, [file, onStatusChange, onTotalPagesChange]);
+  }, [file, onStatusChange, onTotalPagesChange, isMobile]); // Added 'isMobile' dependency
 
-  // Highlight Engine
   useEffect(() => {
     if (!docxContainerRef.current || renderVersion === 0) return;
     const container = docxContainerRef.current;
@@ -203,7 +202,6 @@ export function DocxViewer({
     });
   }, [renderVersion, highlightDependency, selectedHighlightId]);
 
-  // Click Listener for Highlights
   useEffect(() => {
     const container = docxContainerRef.current;
     if (!container) return;
@@ -224,7 +222,6 @@ export function DocxViewer({
     return () => container.removeEventListener('click', handleHighlightClick);
   }, [onSelectHighlight]);
 
-  // Update visibility layout mapping definitions
   useEffect(() => {
     if (!docxContainerRef.current) return;
 
@@ -305,9 +302,8 @@ export function DocxViewer({
         }
       });
     }
-  }, [currentPage, file, viewMode, renderVersion]);
+  }, [currentPage, file, viewMode, renderVersion, isMobile]); // Added 'isMobile' dependency
 
-  // 3. High-Priority Manual Scroll Syncing (Toolbar/Enter clicks)
   useEffect(() => {
     if (viewMode !== 'scroll' || renderVersion === 0) return;
     if (pageChangeSourceRef.current !== 'manual') return;
@@ -334,45 +330,52 @@ export function DocxViewer({
     }
   }, [currentPage, manualScrollNonce, viewMode, renderVersion, scrollContainerRef, pageChangeSourceRef]);
 
-  // 4. Native Intersection Observer for instant toolbar updates on continuous scroll
   useEffect(() => {
     if (viewMode !== 'scroll' || renderVersion === 0) return;
 
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    const observerOptions = {
-      root: container,
-      rootMargin: '-25% 0px -70% 0px',
-      threshold: 0
-    };
+    const pages = docxContainerRef.current?.querySelectorAll('.docx-viewer > section, section');
+    if (!pages || pages.length === 0) return;
 
-    const handleIntersection = (entries: IntersectionObserverEntry[]) => {
-      if (pageChangeSourceRef.current === 'manual') return;
+    let animationFrameId = 0;
 
-      const visibleEntry = entries.find(entry => entry.isIntersecting);
-      if (visibleEntry) {
-        const idMatch = visibleEntry.target.id.match(/-(\d+)$/);
-        if (idMatch) {
-          const pageNum = parseInt(idMatch[1], 10);
-          if (pageNum !== currentPageRef.current) {
-            onCurrentPageChange(pageNum);
-          }
+    const updateCurrentPageFromScroll = () => {
+      if (pageChangeSourceRef?.current === 'manual') return;
+      
+      const containerRect = container.getBoundingClientRect();
+      const topThreshold = containerRect.top + containerRect.height * 0.4;
+      let pageAtTop = 1;
+
+      pages.forEach((pageElement, index) => {
+        const element = pageElement as HTMLElement;
+        const rect = element.getBoundingClientRect();
+        if (rect.top <= topThreshold) {
+          pageAtTop = index + 1;
         }
+      });
+
+      if (pageAtTop !== currentPageRef.current) {
+        onCurrentPageChange(pageAtTop);
       }
     };
 
-    const observer = new IntersectionObserver(handleIntersection, observerOptions);
-    const pages = docxContainerRef.current?.querySelectorAll('.docx-viewer > section, section');
-    
-    pages?.forEach((element) => {
-      observer.observe(element);
-    });
+    const handleScroll = () => {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = requestAnimationFrame(updateCurrentPageFromScroll);
+    };
+
+    updateCurrentPageFromScroll();
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll);
 
     return () => {
-      observer.disconnect();
+      cancelAnimationFrame(animationFrameId);
+      container.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
     };
-  }, [renderVersion, onCurrentPageChange, scrollContainerRef, viewMode, pageChangeSourceRef]);
+  }, [onCurrentPageChange, renderVersion, scrollContainerRef, viewMode, pageChangeSourceRef]);
 
   return (
     <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: isMobile ? 'flex-start' : 'center' }}>

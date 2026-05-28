@@ -5,7 +5,6 @@ import { getFileStreamUrl } from '../services/api';
 import type { AvailableFile } from '../services/api';
 import type { NotesByPage, HighlightEntry } from '../types/notes';
 
-// Initialize the PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
@@ -72,7 +71,6 @@ export function PdfViewer({
     highlightsRef.current = highlightsByPage;
   }, [highlightsByPage]);
 
-  // 1. HIGHLIGHT ENGINE
   useEffect(() => {
     if (textRenderVersion === 0) return;
 
@@ -180,7 +178,6 @@ export function PdfViewer({
     }
   }, [textRenderVersion, highlightDependency, selectedHighlightId, numPages]);
 
-  // 2. Click Listener for the highlights
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -201,16 +198,11 @@ export function PdfViewer({
     return () => container.removeEventListener('click', handleHighlightClick);
   }, [onSelectHighlight, scrollContainerRef]);
 
-  // 3. High-Priority Manual Scroll Syncing (Triggered by toolbar jumps or inputs)
   useEffect(() => {
     if (viewMode !== 'scroll' || numPages <= 0) return;
-    
-    // Abort if the layout shift didn't originate from a deliberate toolbar action
     if (pageChangeSourceRef.current !== 'manual') return;
 
     const container = scrollContainerRef.current;
-    
-    // Read directly from the updated currentPage state prop passed down from App.tsx
     const element = document.getElementById(`pdf-page-${currentPage}`);
     
     if (element && container) {
@@ -218,14 +210,11 @@ export function PdfViewer({
       const containerRect = container.getBoundingClientRect();
       const relativeTop = elRect.top - containerRect.top + container.scrollTop;
 
-      // Force an instant layout reposition directly to the target element boundary heights
       container.scrollTo({
         top: Math.max(0, Math.round(relativeTop)),
-        behavior: 'auto' // Instant snap layout placement
+        behavior: 'auto'
       });
 
-      // Maintain the manual source lock just long enough for browser paint lines to settle,
-      // preventing the IntersectionObserver scroll tracker from interrupting mid-jump.
       const unlockTimer = setTimeout(() => {
         if (pageChangeSourceRef.current === 'manual') {
           pageChangeSourceRef.current = null;
@@ -234,19 +223,13 @@ export function PdfViewer({
 
       return () => clearTimeout(unlockTimer);
     }
-    // Added manualScrollNonce to ensure the hook executes even if the page number is technically identical
   }, [currentPage, manualScrollNonce, viewMode, numPages, scrollContainerRef, pageChangeSourceRef]);
 
-  // 3b. Document Hydration Syncing (Fires once the document structure finishes loading into the DOM)
   useEffect(() => {
     if (viewMode !== 'scroll' || numPages <= 1) return;
-    
-    // Only execute this if App.tsx flagged this load layout session as a pending manual jump
     if (pageChangeSourceRef.current !== 'manual') return;
 
     const container = scrollContainerRef.current;
-    
-    // Attempt to locate the bookmarked page element
     const element = document.getElementById(`pdf-page-${currentPage}`);
     
     if (element && container) {
@@ -254,13 +237,11 @@ export function PdfViewer({
       const containerRect = container.getBoundingClientRect();
       const relativeTop = elRect.top - containerRect.top + container.scrollTop;
 
-      // Snap to your bookmarked scroll offset position cleanly
       container.scrollTo({
         top: Math.max(0, Math.round(relativeTop)),
         behavior: 'auto'
       });
 
-      // Release the manual lock so continuous mouse wheel scroll tracking can take back over
       const unlockTimer = setTimeout(() => {
         if (pageChangeSourceRef.current === 'manual') {
           pageChangeSourceRef.current = null;
@@ -269,10 +250,8 @@ export function PdfViewer({
 
       return () => clearTimeout(unlockTimer);
     }
-  }, [numPages, viewMode, scrollContainerRef, pageChangeSourceRef]);
+  }, [numPages, viewMode, scrollContainerRef, pageChangeSourceRef, currentPage]); // FIXED: Synchronized current page changes in dependency map
 
-
-  // 4. Native Intersection Observer for instant toolbar updates on scroll
   useEffect(() => {
     if (viewMode !== 'scroll' || numPages <= 0) return;
 
@@ -286,12 +265,8 @@ export function PdfViewer({
     };
 
     const handleIntersection = (entries: IntersectionObserverEntry[]) => {
-      // CRITICAL HYDRATION FIX: Do not let the observer overwrite the page number 
-      // if the user clicked a button, typed a number, or if the document is loading a saved position
       if (pageChangeSourceRef.current === 'manual') return;
 
-      // Access the parent document's global window state to check if hydration is active
-      // This stops Page 1 from resetting your saved progress on mount
       const visibleEntry = entries.find(entry => entry.isIntersecting);
       
       if (visibleEntry) {
