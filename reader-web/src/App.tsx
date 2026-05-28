@@ -72,7 +72,7 @@ function App() {
   const pendingLoadedPageRef = useRef<number | null>(null);
   const prevNotesByPageRef = useRef<NotesByPage>(notesByPage);
 
-  const resetDocumentState = useCallback(() => {
+  const resetDocumentState = () => {
     isDocumentHydratingRef.current = false;
     pendingLoadedPageRef.current = null;
     setSelectedFile(null);
@@ -84,7 +84,7 @@ function App() {
     setLibraryOpen(false);
     setInfoOpen(false);
     setManualScrollNonce(0);
-  }, []);
+  };
 
   const handleSignOut = () => {
     localStorage.removeItem('OAUTH_TOKEN');
@@ -93,20 +93,6 @@ function App() {
     resetDocumentState();
     setSyncStatus('Signed out.');
   };
-
-  const setCurrentPageFromManualAction = useCallback((page: number) => {
-    pageChangeSourceRef.current = 'manual';
-    setLocalPage(page);
-    setCurrentPage(page);
-    setManualScrollNonce(prev => prev + 1); 
-  }, []);
-
-  const setCurrentPageFromScroll = useCallback((page: number) => {
-    if (pageChangeSourceRef.current === 'manual') return;
-    pageChangeSourceRef.current = 'scroll';
-    setLocalPage(page);
-    setCurrentPage(page);
-  }, []);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -120,7 +106,7 @@ function App() {
     };
   }, []);
 
-  const refreshLibrary = useCallback(async (selectFirstIfNeeded = false): Promise<AvailableFile[]> => {
+  const refreshLibrary = async (selectFirstIfNeeded = false): Promise<AvailableFile[]> => {
     const files = await getAvailableFiles();
     const defaultEpoch = new Date('2026-05-23T00:00:00Z').getTime();
     const normalized = files.map(f => ({
@@ -137,7 +123,7 @@ function App() {
     }
 
     return normalized;
-  }, []);
+  };
 
   const handleRemoveFileFromLibrary = async (file: AvailableFile): Promise<boolean> => {
     const wasSelected = selectedFile?.id === file.id;
@@ -189,7 +175,7 @@ function App() {
     .catch(() => {
       setSyncStatus('Connection failed.');
     });
-  }, [isSignedIn, refreshLibrary]);
+  }, [isSignedIn]);
 
   useEffect(() => {
     if (!selectedFile?.id) {
@@ -230,13 +216,12 @@ function App() {
     };
   }, [currentPage, notesByPage, selectedFile?.id, selectedFile?.type, userId]);
 
-  // FIX: Handled view mode alignment source shifts safely without creating state update loops
+  // View Mode Shift Alignment Sync
   useEffect(() => {
     if (viewMode === 'scroll' && localPage > 1) {
       pageChangeSourceRef.current = 'manual';
       setManualScrollNonce(prev => prev + 1);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
 
   // Core high-priority manual scroll execution engine
@@ -271,7 +256,21 @@ function App() {
     executeScrollJump();
     const backupTimer = setTimeout(executeScrollJump, 60);
     return () => clearTimeout(backupTimer);
-  }, [manualScrollNonce, viewMode, selectedFile, localPage]);
+  }, [manualScrollNonce, viewMode, selectedFile]);
+
+  const setCurrentPageFromManualAction = (page: number) => {
+    pageChangeSourceRef.current = 'manual';
+    setLocalPage(page);
+    setCurrentPage(page);
+    setManualScrollNonce(prev => prev + 1); 
+  };
+
+  const setCurrentPageFromScroll = (page: number) => {
+    if (pageChangeSourceRef.current === 'manual') return;
+    pageChangeSourceRef.current = 'scroll';
+    setLocalPage(page);
+    setCurrentPage(page);
+  };
 
   const getPageEntry = (page: number): PageNoteEntry => notesByPage[page] ?? { note: '', highlights: [] };
 
@@ -445,8 +444,7 @@ function App() {
       isDocumentHydratingRef.current = false;
     }
     fetchServerState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, selectedFile, totalPages, setCurrentPageFromManualAction]);
+  }, [userId, selectedFile, totalPages]);
 
   useEffect(() => {
     const pending = pendingLoadedPageRef.current;
@@ -455,7 +453,7 @@ function App() {
       setCurrentPageFromManualAction(clamped);
       pendingLoadedPageRef.current = null;
     }
-  }, [totalPages, setCurrentPageFromManualAction]);
+  }, [totalPages]);
 
   const handleSyncData = async () => {
     if (!selectedFile) return;
@@ -630,32 +628,6 @@ function App() {
     setIsHighlightMode((prev) => !prev);
   }, []);
 
-  // FIX: Shifted the global background click listener hook upward so it executes ahead of any conditional layout return markers
-  useEffect(() => {
-    const handleGlobalClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target) return;
-
-      if (target.closest('mark[data-highlight-id]')) {
-        return;
-      }
-      if (target.closest('aside') || target.closest('button')) {
-        return;
-      }
-      if (target.closest('input') || target.closest('textarea')) {
-        return;
-      }
-      if (selectedHighlightId !== null) {
-        setSelectedHighlightId(null);
-      }
-    };
-
-    window.addEventListener('click', handleGlobalClick);
-    return () => {
-      window.removeEventListener('click', handleGlobalClick);
-    };
-  }, [selectedHighlightId]);
-
   if (!isSignedIn) {
     return (
       <AuthGate
@@ -668,6 +640,41 @@ function App() {
       />
     );
   }
+
+  // Global Click Listener to unselect highlights when clicking anywhere else
+  useEffect(() => {
+    const handleGlobalClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      // 1. If we clicked an actual <mark> tag (highlight), let its own handler work
+      if (target.closest('mark[data-highlight-id]')) {
+        return;
+      }
+
+      // 2. If we clicked inside the Notes Sidebar panel, don't clear selection
+      if (target.closest('aside') || target.closest('button')) {
+        return;
+      }
+
+      // 3. If we clicked interactive toolbar or library components, don't clear selection
+      if (target.closest('input') || target.closest('textarea')) {
+        return;
+      }
+
+      // 4. Any other click on the empty canvas, gray background, or page borders clears the selection
+      if (selectedHighlightId !== null) {
+        setSelectedHighlightId(null);
+      }
+    };
+
+    // Attach to the window to catch all bubbling background clicks safely
+    window.addEventListener('click', handleGlobalClick);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+    };
+  }, [selectedHighlightId]);
+
 
   if (!selectedFile) {
     return (

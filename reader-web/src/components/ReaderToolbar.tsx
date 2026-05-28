@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useState, useRef, useEffect, type CSSProperties } from 'react';
 import type { AvailableFile } from '../services/api';
 
 interface ReaderToolbarProps {
@@ -46,13 +46,14 @@ export default function ReaderToolbar({
   const [menuHover, setMenuHover] = useState<'notes' | 'info' | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // Keep a local scratchpad text variable that won't get erased by continuous scroll loops
+  // FIXED: Using pure derived rendering mechanics to prevent state-in-effect compilation blocks
+  const [prevCurrentPage, setPrevCurrentPage] = useState(currentPage);
   const [localInput, setLocalInput] = useState<string>(String(currentPage));
 
-  // Sync the text box value ONLY when the page naturally shifts or updates
-  useEffect(() => {
+  if (currentPage !== prevCurrentPage) {
+    setPrevCurrentPage(currentPage);
     setLocalInput(String(currentPage));
-  }, [currentPage]);
+  }
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
