@@ -67,6 +67,7 @@ function App() {
   const notesResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const isDocumentHydratingRef = useRef<boolean>(false);
   const pendingLoadedPageRef = useRef<number | null>(null);
+  const prevNotesByPageRef = useRef<NotesByPage>(notesByPage);
 
   const resetDocumentState = () => {
     isDocumentHydratingRef.current = false;
@@ -183,12 +184,17 @@ function App() {
     }
 
     if (isDocumentHydratingRef.current) {
+      prevNotesByPageRef.current = notesByPage;
       return;
     }
 
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
     }
+
+    const notesChanged = prevNotesByPageRef.current !== notesByPage;
+    prevNotesByPageRef.current = notesByPage;
+    const delay = notesChanged ? 500 : AUTO_SAVE_DELAY_MS;
 
     autoSaveTimerRef.current = setTimeout(() => {
       void saveProgress({
