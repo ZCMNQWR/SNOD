@@ -5,7 +5,6 @@ interface ReaderToolbarProps {
   selectedFile: AvailableFile | null;
   currentPage: number;
   totalPages: number;
-  pageInput: string;
   zoom: number;
   viewMode: 'single' | 'scroll';
   isFullPage: boolean;
@@ -13,7 +12,6 @@ interface ReaderToolbarProps {
   syncStatus: string;
   onOpenLibrary: () => void;
   onSetCurrentPage: (page: number) => void;
-  onSetPageInput: (value: string) => void;
   onSetZoom: (value: number | ((current: number) => number)) => void;
   onSetViewMode: (value: 'single' | 'scroll') => void;
   onToggleFullPage: () => void;
@@ -28,7 +26,6 @@ export default function ReaderToolbar({
   selectedFile,
   currentPage,
   totalPages,
-  pageInput,
   zoom,
   viewMode,
   isFullPage,
@@ -36,7 +33,6 @@ export default function ReaderToolbar({
   syncStatus,
   onOpenLibrary,
   onSetCurrentPage,
-  onSetPageInput,
   onSetZoom,
   onSetViewMode,
   onToggleFullPage,
@@ -49,6 +45,14 @@ export default function ReaderToolbar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuHover, setMenuHover] = useState<'notes' | 'info' | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep a local scratchpad text variable that won't get erased by continuous scroll loops
+  const [localInput, setLocalInput] = useState<string>(String(currentPage));
+
+  // Sync the text box value ONLY when the page naturally shifts or updates
+  useEffect(() => {
+    setLocalInput(String(currentPage));
+  }, [currentPage]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -63,7 +67,6 @@ export default function ReaderToolbar({
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [menuOpen]);
 
-  // Helper handler to prevent global pointerdown menu unmounting bugs
   const handleMenuAction = (event: React.MouseEvent, action: () => void) => {
     event.preventDefault();
     setMenuHover(null);
@@ -146,10 +149,10 @@ export default function ReaderToolbar({
         <input
           type="text"
           inputMode="numeric"
-          value={pageInput}
+          value={localInput}
           onChange={(e) => {
             const cleaned = e.target.value.replace(/[^0-9]/g, '');
-            onSetPageInput(cleaned);
+            setLocalInput(cleaned);
           }}
           onKeyDown={(e) => {
             if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -158,20 +161,20 @@ export default function ReaderToolbar({
             }
 
             if (e.key === 'Escape') {
-              onSetPageInput(String(currentPage));
+              setLocalInput(String(currentPage));
               e.currentTarget.blur();
               return;
             }
 
             if (e.key !== 'Enter') return;
 
-            const val = parseInt(pageInput, 10);
+            const val = parseInt(localInput, 10);
             if (!isNaN(val) && val >= 1 && val <= totalPages) {
               onPageChangeSourceManual();
               onSetCurrentPage(val);
               e.currentTarget.blur();
             } else {
-              onSetPageInput(String(currentPage));
+              setLocalInput(String(currentPage));
             }
           }}
           onWheel={(e) => { e.preventDefault(); }}

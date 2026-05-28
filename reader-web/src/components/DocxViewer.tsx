@@ -14,6 +14,7 @@ interface DocxViewerProps {
   onCurrentPageChange: (page: number) => void;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   pageChangeSourceRef: RefObject<'manual' | 'scroll' | null>;
+  manualScrollNonce: number; // Added tracking nonce prop
   highlightsByPage?: NotesByPage;
   selectedHighlightId?: string | null;
   onSelectHighlight?: (id: string | null) => void;
@@ -29,6 +30,7 @@ export function DocxViewer({
   onCurrentPageChange, 
   scrollContainerRef, 
   pageChangeSourceRef,
+  manualScrollNonce, // Destructured nonce
   highlightsByPage,
   selectedHighlightId,
   onSelectHighlight
@@ -48,14 +50,12 @@ export function DocxViewer({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // 1. Create a signature that ONLY changes when highlights are added/removed, NOT when notes are typed.
   const highlightDependency = JSON.stringify(
     Object.entries(highlightsByPage || {}).map(([, data]) => {
       return data.highlights.map((h: HighlightEntry) => `${h.id}:${h.occurrenceIndex}`);
     })
   );
 
-  // 2. Keep a silent reference to the latest data so we can read it without triggering a re-render
   const highlightsRef = useRef(highlightsByPage);
   useEffect(() => {
     highlightsRef.current = highlightsByPage;
@@ -99,12 +99,11 @@ export function DocxViewer({
     loadAndCompileDocx();
   }, [file, onStatusChange, onTotalPagesChange]);
 
-  // 1. Highlight Engine: Multi-line & Whitespace Agnostic
+  // Highlight Engine
   useEffect(() => {
     if (!docxContainerRef.current || renderVersion === 0) return;
     const container = docxContainerRef.current;
 
-    // A. Clean up old highlights
     const existingMarks = container.querySelectorAll('mark[data-highlight-id]');
     existingMarks.forEach((mark) => {
       const textNode = document.createTextNode(mark.textContent || '');
@@ -112,14 +111,12 @@ export function DocxViewer({
     });
     container.normalize();
 
-    // B. Apply current highlights
     const pages = container.querySelectorAll('.docx-viewer > section, section');
     pages.forEach((pageElement, index) => {
       const pageNum = index + 1;
       const pageHighlights = highlightsRef.current?.[pageNum]?.highlights;
       if (!pageHighlights || pageHighlights.length === 0) return;
 
-      // 1. Build a fully stripped string and map each text node to its stripped coordinates
       let strippedDoc = "";
       const textNodes: { node: Text, start: number, end: number, originalText: string }[] = [];
 
@@ -138,7 +135,6 @@ export function DocxViewer({
         strippedDoc += strippedText;
       }
 
-      // 2. Map highlights to stripped coordinates
       const matches: { start: number, end: number, highlight: HighlightEntry }[] = [];
       pageHighlights.forEach(highlight => {
         const strippedHighlight = highlight.text.replace(/\s+/g, '');
@@ -154,10 +150,8 @@ export function DocxViewer({
         }
       });
 
-      // 3. Sort back-to-front (crucial so DOM splits don't shift our coordinates)
       matches.sort((a, b) => b.start - a.start);
 
-      // 4. Apply marks safely across newlines, spaces, and formatting tags
       matches.forEach(match => {
         const overlappingNodes = textNodes.filter(n => n.start < match.end && n.end > match.start);
 
@@ -169,7 +163,6 @@ export function DocxViewer({
           let originalStart = -1;
           let originalEnd = -1;
 
-          // Convert stripped coordinates back into the original whitespace-filled string
           for (let i = 0; i < n.originalText.length; i++) {
             if (!/\s/.test(n.originalText[i])) {
               if (charCount === strippedStartInNode) originalStart = i;
@@ -189,7 +182,6 @@ export function DocxViewer({
           const after = text.substring(originalEnd);
 
           const isSelected = match.highlight.id === selectedHighlightId;
-          // Slightly milder orange for selected highlights
           const bgColor = isSelected ? 'rgba(255, 165, 0, 0.85)' : 'rgba(253, 224, 71, 0.4)';
 
           const mark = document.createElement('mark');
@@ -211,7 +203,7 @@ export function DocxViewer({
     });
   }, [renderVersion, highlightDependency, selectedHighlightId]);
 
-  // 2. Click Listener: Catch clicks on injected <mark> tags
+  // Click Listener for Highlights
   useEffect(() => {
     const container = docxContainerRef.current;
     if (!container) return;
@@ -232,8 +224,7 @@ export function DocxViewer({
     return () => container.removeEventListener('click', handleHighlightClick);
   }, [onSelectHighlight]);
 
-
-  // Update visibility of DOCX pages when currentPage shifts or viewMode changes
+  // Update visibility layout mapping definitions
   useEffect(() => {
     if (!docxContainerRef.current) return;
 
@@ -247,7 +238,6 @@ export function DocxViewer({
         htmlPage.style.display = 'block';
         htmlPage.style.width = '100%';
         htmlPage.style.maxWidth = '900px';
-        // Only add bottom margin between pages; remove bottom margin for the final page
         if (total === 1) {
           htmlPage.style.margin = '0 auto 0';
         } else if (index === 0) {
@@ -317,94 +307,72 @@ export function DocxViewer({
     }
   }, [currentPage, file, viewMode, renderVersion]);
 
-  // Scroll to page when currentPage changes in scroll mode
+  // 3. High-Priority Manual Scroll Syncing (Toolbar/Enter clicks)
   useEffect(() => {
-    if (viewMode !== 'scroll' || pageChangeSourceRef.current !== 'manual') {
-      return;
-    }
+    if (viewMode !== 'scroll' || renderVersion === 0) return;
+    if (pageChangeSourceRef.current !== 'manual') return;
 
+    const container = scrollContainerRef.current;
     const element = document.getElementById(`docx-page-${currentPage}`);
-    if (element) {
-      // The page exists! Scroll to it.
-      const container = scrollContainerRef.current;
-      if (container) {
-        const elRect = element.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        container.scrollTo({ top: container.scrollTop + (elRect.top - containerRect.top), behavior: 'auto' });
-      } else {
-        element.scrollIntoView({ behavior: 'auto', block: 'start' });
-      }
-      
-      const timer = setTimeout(() => {
+    
+    if (element && container) {
+      const elRect = element.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const relativeTop = elRect.top - containerRect.top + container.scrollTop;
+
+      container.scrollTo({
+        top: Math.max(0, Math.round(relativeTop)),
+        behavior: 'auto'
+      });
+
+      const unlockTimer = setTimeout(() => {
         if (pageChangeSourceRef.current === 'manual') {
           pageChangeSourceRef.current = null;
         }
       }, 150);
-      return () => clearTimeout(timer);
+      return () => clearTimeout(unlockTimer);
     }
+  }, [currentPage, manualScrollNonce, viewMode, renderVersion, scrollContainerRef, pageChangeSourceRef]);
 
-    const fallbackTimer = setTimeout(() => {
-      if (pageChangeSourceRef.current === 'manual') {
-        pageChangeSourceRef.current = null;
-      }
-    }, 2000);
-    return () => clearTimeout(fallbackTimer);
-  }, [currentPage, pageChangeSourceRef, viewMode, renderVersion]);
-
-  // Scroll observer
+  // 4. Native Intersection Observer for instant toolbar updates on continuous scroll
   useEffect(() => {
-    if (viewMode !== 'scroll') {
-      return;
-    }
+    if (viewMode !== 'scroll' || renderVersion === 0) return;
 
     const container = scrollContainerRef.current;
-    if (!container) {
-      return;
-    }
+    if (!container) return;
 
-    const pages = docxContainerRef.current?.querySelectorAll('.docx-viewer > section, section');
-    if (!pages || pages.length === 0) {
-      return;
-    }
+    const observerOptions = {
+      root: container,
+      rootMargin: '-25% 0px -70% 0px',
+      threshold: 0
+    };
 
-    let animationFrameId = 0;
+    const handleIntersection = (entries: IntersectionObserverEntry[]) => {
+      if (pageChangeSourceRef.current === 'manual') return;
 
-    const updateCurrentPageFromScroll = () => {
-      if (pageChangeSourceRef?.current === 'manual') {
-        return;
-      }
-      const containerRect = container.getBoundingClientRect();
-      const topThreshold = containerRect.top + containerRect.height * 0.4;
-      let pageAtTop = 1;
-
-      pages.forEach((pageElement, index) => {
-        const element = pageElement as HTMLElement;
-        const rect = element.getBoundingClientRect();
-        if (rect.top <= topThreshold) {
-          pageAtTop = index + 1;
+      const visibleEntry = entries.find(entry => entry.isIntersecting);
+      if (visibleEntry) {
+        const idMatch = visibleEntry.target.id.match(/-(\d+)$/);
+        if (idMatch) {
+          const pageNum = parseInt(idMatch[1], 10);
+          if (pageNum !== currentPageRef.current) {
+            onCurrentPageChange(pageNum);
+          }
         }
-      });
-
-      if (pageAtTop !== currentPageRef.current) {
-        onCurrentPageChange(pageAtTop);
       }
     };
 
-    const handleScroll = () => {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = requestAnimationFrame(updateCurrentPageFromScroll);
-    }
-
-    updateCurrentPageFromScroll();
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll);
+    const observer = new IntersectionObserver(handleIntersection, observerOptions);
+    const pages = docxContainerRef.current?.querySelectorAll('.docx-viewer > section, section');
+    
+    pages?.forEach((element) => {
+      observer.observe(element);
+    });
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
-      container.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
+      observer.disconnect();
     };
-  }, [onCurrentPageChange, renderVersion, scrollContainerRef, viewMode, pageChangeSourceRef]);
+  }, [renderVersion, onCurrentPageChange, scrollContainerRef, viewMode, pageChangeSourceRef]);
 
   return (
     <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: isMobile ? 'flex-start' : 'center' }}>

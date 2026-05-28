@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, type CSSProperties } from 'react';
 import type { HighlightEntry } from '../types/notes';
 
 interface NotesSidebarProps {
@@ -32,12 +32,10 @@ export default function NotesSidebar({
   selectedHighlightId,
   onSelectHighlight,
 }: NotesSidebarProps) {
-  // Local state for inline editing of the highlight names
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [noteHeight, setNoteHeight] = useState<number>(140);
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
-
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
   useEffect(() => {
@@ -54,7 +52,11 @@ export default function NotesSidebar({
       setNoteHeight(next);
     };
 
-    const handleUp = () => { resizeRef.current = null; window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp); };
+    const handleUp = () => { 
+      resizeRef.current = null; 
+      window.removeEventListener('mousemove', handleMove); 
+      window.removeEventListener('mouseup', handleUp); 
+    };
 
     return () => {
       window.removeEventListener('mousemove', handleMove);
@@ -62,7 +64,6 @@ export default function NotesSidebar({
     };
   }, []);
 
-  // Helper to generate the default 3-word name
   const getDefaultName = (text: string) => {
     const words = text.trim().split(/\s+/);
     if (words.length <= 3) return text;
@@ -78,6 +79,7 @@ export default function NotesSidebar({
 
   return (
     <aside
+      onClick={(e) => e.stopPropagation()} // <-- FIX: Stops clicks inside sidebar from triggering background unselection
       style={{
         width: isMobile ? '100vw' : width,
         minWidth: isMobile ? '100vw' : 260,
@@ -212,103 +214,116 @@ export default function NotesSidebar({
                 const displayName = highlight.customName || getDefaultName(highlight.text);
 
                 return (
-                <div
-                  key={highlight.id}
-                  onClick={() => onSelectHighlight?.(highlight.id)}
-                  style={{
-                    background: isSelected ? 'linear-gradient(90deg, rgba(245,158,11,0.12), rgba(250,204,21,0.06))' : 'rgba(255,255,255,0.05)',
-                    border: isSelected ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 10,
-                    padding: 12,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-                    
-                    {/* INLINE EDITING BADGE */}
-                    {isEditing ? (
-                      <input
-                        autoFocus
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onBlur={() => handleSaveRename(highlight.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveRename(highlight.id);
-                          if (e.key === 'Escape') setEditingId(null);
+                  <div
+                    key={highlight.id}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Stop parent bubble sequence
+                      onSelectHighlight?.(highlight.id);
+                    }}
+                    style={{
+                      background: isSelected ? 'linear-gradient(90deg, rgba(245,158,11,0.12), rgba(250,204,21,0.06))' : 'rgba(255,255,255,0.05)',
+                      border: isSelected ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 10,
+                      padding: 12,
+                      cursor: 'pointer',
+                      transition: 'border-color 0.2s ease, background 0.2s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                      
+                      {isEditing ? (
+                        <input
+                          autoFocus
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={() => handleSaveRename(highlight.id)}
+                          onClick={(e) => e.stopPropagation()} 
+                          onMouseDown={(e) => e.stopPropagation()} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveRename(highlight.id);
+                            if (e.key === 'Escape') setEditingId(null);
+                          }}
+                          style={{
+                            background: '#facc15',
+                            color: '#111827',
+                            borderRadius: '12px',
+                            padding: '2px 10px',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            border: '1px solid #ffffff',
+                            outline: 'none',
+                            width: '130px',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      ) : (
+                        <div 
+                          title="Click to rename tag"
+                          onClick={(e) => {
+                            e.stopPropagation(); 
+                            setEditingId(highlight.id);
+                            setEditValue(displayName);
+                          }}
+                          style={{ 
+                            display: 'inline-block', 
+                            background: '#facc15', 
+                            color: '#111827', 
+                            borderRadius: 999, 
+                            padding: '2px 10px', 
+                            fontSize: 11, 
+                            fontWeight: 700,
+                            cursor: 'text',
+                            border: '1px solid transparent',
+                            userSelect: 'none'
+                          }}
+                        >
+                          {displayName}
+                        </div>
+                      )}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveHighlight(highlight.id);
                         }}
                         style={{
-                          background: '#facc15',
-                          color: '#111827',
-                          borderRadius: 999,
-                          padding: '0px 8px',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          border: '2px solid #fff', // small border to show it's active
-                          outline: 'none',
-                          minWidth: '60px',
-                          maxWidth: '140px'
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          padding: '2px 4px',
+                          transition: 'color 0.2s ease'
                         }}
-                      />
-                    ) : (
-                      <div 
-                        title="Click to rename"
-                        onClick={(e) => {
-                          e.stopPropagation(); // prevent triggering the parent selection onClick
-                          setEditingId(highlight.id);
-                          setEditValue(displayName);
-                        }}
-                        style={{ 
-                          display: 'inline-block', 
-                          background: '#facc15', 
-                          color: '#111827', 
-                          borderRadius: 999, 
-                          padding: '2px 8px', 
-                          fontSize: 11, 
-                          fontWeight: 700,
-                          cursor: 'text' // Hint that it can be edited
-                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
                       >
-                        {displayName}
-                      </div>
-                    )}
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveHighlight(highlight.id);
-                      }}
+                        Remove
+                      </button>
+                    </div>
+                    
+                    <textarea
+                      value={highlight.comment}
+                      onChange={(event) => onHighlightCommentChange(highlight.id, event.target.value)}
+                      onClick={(e) => e.stopPropagation()} 
+                      placeholder="Add a comment for this highlight..."
                       style={{
-                        border: 'none',
-                        background: 'transparent',
-                        color: '#94a3b8',
-                        cursor: 'pointer',
-                        fontSize: 12,
+                        width: '100%',
+                        minHeight: 88,
+                        resize: 'vertical',
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        background: 'rgba(255,255,255,0.04)',
+                        color: '#fff',
+                        padding: 10,
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        lineHeight: 1.45,
                       }}
-                    >
-                      Remove
-                    </button>
+                    />
                   </div>
-                  
-                  <textarea
-                    value={highlight.comment}
-                    onChange={(event) => onHighlightCommentChange(highlight.id, event.target.value)}
-                    placeholder="Add a comment for this highlight..."
-                    style={{
-                      width: '100%',
-                      minHeight: 88,
-                      resize: 'vertical',
-                      borderRadius: 8,
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      background: 'rgba(255,255,255,0.04)',
-                      color: '#fff',
-                      padding: 10,
-                      boxSizing: 'border-box',
-                      outline: 'none',
-                      lineHeight: 1.45,
-                    }}
-                  />
-                </div>
-              )})}
+                );
+              })}
             </div>
           )}
         </section>

@@ -54,7 +54,6 @@ function App() {
   // Decoupled page states for instant local updates vs debounced cloud sync
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [localPage, setLocalPage] = useState<number>(1);
-  const [pageInput, setPageInput] = useState<string>('1');
   const [totalPages, setTotalPages] = useState<number>(1);
   const [notesByPage, setNotesByPage] = useState<NotesByPage>({});
   const [syncStatus, setSyncStatus] = useState<string>('Connecting...');
@@ -79,7 +78,6 @@ function App() {
     setSelectedFile(null);
     setCurrentPage(1);
     setLocalPage(1);
-    setPageInput('1');
     setTotalPages(1);
     setNotesByPage({});
     setSelectedHighlightId(null);
@@ -134,7 +132,6 @@ function App() {
       setSelectedFile(null);
       setCurrentPage(1);
       setLocalPage(1);
-      setPageInput('1');
       setTotalPages(1);
       setNotesByPage({});
       setSelectedHighlightId(null);
@@ -150,7 +147,6 @@ function App() {
 
       setCurrentPage(1);
       setLocalPage(1);
-      setPageInput('1');
       setTotalPages(1);
       setNotesByPage({});
       setSelectedHighlightId(null);
@@ -180,10 +176,6 @@ function App() {
       setSyncStatus('Connection failed.');
     });
   }, [isSignedIn]);
-
-  useEffect(() => {
-    void Promise.resolve().then(() => setPageInput(String(localPage)));
-  }, [localPage, selectedFile]);
 
   useEffect(() => {
     if (!selectedFile?.id) {
@@ -224,35 +216,57 @@ function App() {
     };
   }, [currentPage, notesByPage, selectedFile?.id, selectedFile?.type, userId]);
 
+  // View Mode Shift Alignment Sync
   useEffect(() => {
     if (viewMode === 'scroll' && localPage > 1) {
       pageChangeSourceRef.current = 'manual';
-      const idPrefix = selectedFile?.type || 'pdf';
-      
-      const timeoutId = setTimeout(() => {
-        const el = document.getElementById(`${idPrefix}-page-${localPage}`);
-        const container = viewportRef.current;
-        if (el && container) {
-          const elRect = el.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
-          const relativeTop = elRect.top - containerRect.top + container.scrollTop;
-          container.scrollTo({ top: Math.max(0, Math.round(relativeTop)), behavior: 'auto' });
-        }
-        pageChangeSourceRef.current = null;
-      }, 100);
-
-      return () => clearTimeout(timeoutId);
+      setManualScrollNonce(prev => prev + 1);
     }
   }, [viewMode]);
+
+  // Core high-priority manual scroll execution engine
+  useEffect(() => {
+    if (viewMode !== 'scroll' || manualScrollNonce === 0 || !selectedFile) return;
+
+    pageChangeSourceRef.current = 'manual';
+    const idPrefix = selectedFile.type || 'pdf';
+
+    const executeScrollJump = () => {
+      const el = document.getElementById(`${idPrefix}-page-${localPage}`);
+      const container = viewportRef.current;
+      
+      if (el && container) {
+        const elRect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const relativeTop = elRect.top - containerRect.top + container.scrollTop;
+        
+        container.scrollTo({ 
+          top: Math.max(0, Math.round(relativeTop)), 
+          behavior: 'auto' 
+        });
+        
+        setTimeout(() => {
+          if (pageChangeSourceRef.current === 'manual') {
+            pageChangeSourceRef.current = null;
+          }
+        }, 150);
+      }
+    };
+
+    executeScrollJump();
+    const backupTimer = setTimeout(executeScrollJump, 60);
+    return () => clearTimeout(backupTimer);
+  }, [manualScrollNonce, viewMode, selectedFile]);
 
   const setCurrentPageFromManualAction = (page: number) => {
     pageChangeSourceRef.current = 'manual';
     setLocalPage(page);
     setCurrentPage(page);
-    setManualScrollNonce(prev => prev + 1);
+    setManualScrollNonce(prev => prev + 1); 
   };
 
   const setCurrentPageFromScroll = (page: number) => {
+    if (pageChangeSourceRef.current === 'manual') return;
     pageChangeSourceRef.current = 'scroll';
     setLocalPage(page);
     setCurrentPage(page);
@@ -402,28 +416,20 @@ function App() {
     async function fetchServerState() {
       isDocumentHydratingRef.current = true;
       const data = await getProgress(progressUserId, selectedFile!.id);
+      
       if (data) {
         const loadedPage = data.currentPage;
-        if (totalPages && totalPages > 0 && loadedPage >= 1 && loadedPage <= totalPages) {
-          pageChangeSourceRef.current = 'manual'; 
-          setCurrentPageFromManualAction(loadedPage);
-        } else {
-          pendingLoadedPageRef.current = loadedPage;
-        }
+        
+        pageChangeSourceRef.current = 'manual';
+        setLocalPage(loadedPage);
+        setCurrentPage(loadedPage);
+        setManualScrollNonce(prev => prev + 1);
+
         if (data.syncDataJson) {
           try {
             const parsed = JSON.parse(data.syncDataJson);
             if (parsed.notesByPage) {
               setNotesByPage(parsed.notesByPage as NotesByPage);
-            } else if (parsed.comments) {
-              setNotesByPage({
-                [data.currentPage]: {
-                  note: parsed.comments || '',
-                  highlights: [],
-                },
-              });
-            } else {
-              setNotesByPage({});
             }
           } catch (e) {
             console.warn(e);
@@ -446,51 +452,8 @@ function App() {
       const clamped = Math.min(Math.max(1, pending), totalPages);
       setCurrentPageFromManualAction(clamped);
       pendingLoadedPageRef.current = null;
-      
-      if (viewMode === 'scroll') {
-        const idPrefix = selectedFile?.type || 'pdf';
-        let attempts = 0;
-        const maxAttempts = 12;
-
-        const tryScroll = () => {
-          attempts += 1;
-          const el = document.getElementById(`${idPrefix}-page-${clamped}`);
-          if (el) {
-            try {
-              const container = viewportRef.current;
-              if (container) {
-                const elRect = el.getBoundingClientRect();
-                const containerRect = container.getBoundingClientRect();
-                const relativeTop = elRect.top - containerRect.top + container.scrollTop;
-                container.scrollTo({ top: Math.max(0, Math.round(relativeTop)), behavior: 'auto' });
-              } else {
-                el.scrollIntoView({ behavior: 'auto', block: 'start' });
-              }
-            } catch (e) {
-              console.warn(e);
-            }
-            
-            setTimeout(() => {
-              if (pageChangeSourceRef.current === 'manual') pageChangeSourceRef.current = null;
-            }, 250);
-            return true;
-          }
-          if (attempts >= maxAttempts) {
-            if (pageChangeSourceRef.current === 'manual') pageChangeSourceRef.current = null;
-            return true;
-          }
-          return false;
-        };
-
-        if (!tryScroll()) {
-          const intervalId = setInterval(() => {
-            const done = tryScroll();
-            if (done) clearInterval(intervalId);
-          }, 150);
-        }
-      }
     }
-  }, [totalPages, selectedFile?.type, viewMode, pageChangeSourceRef, viewportRef]);
+  }, [totalPages]);
 
   const handleSyncData = async () => {
     if (!selectedFile) return;
@@ -678,6 +641,41 @@ function App() {
     );
   }
 
+  // Global Click Listener to unselect highlights when clicking anywhere else
+  useEffect(() => {
+    const handleGlobalClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      // 1. If we clicked an actual <mark> tag (highlight), let its own handler work
+      if (target.closest('mark[data-highlight-id]')) {
+        return;
+      }
+
+      // 2. If we clicked inside the Notes Sidebar panel, don't clear selection
+      if (target.closest('aside') || target.closest('button')) {
+        return;
+      }
+
+      // 3. If we clicked interactive toolbar or library components, don't clear selection
+      if (target.closest('input') || target.closest('textarea')) {
+        return;
+      }
+
+      // 4. Any other click on the empty canvas, gray background, or page borders clears the selection
+      if (selectedHighlightId !== null) {
+        setSelectedHighlightId(null);
+      }
+    };
+
+    // Attach to the window to catch all bubbling background clicks safely
+    window.addEventListener('click', handleGlobalClick);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+    };
+  }, [selectedHighlightId]);
+
+
   if (!selectedFile) {
     return (
       <DocumentLanding
@@ -705,7 +703,6 @@ function App() {
       libraryOpen={libraryOpen}
       infoOpen={infoOpen}
       currentPage={localPage}
-      pageInput={pageInput}
       zoom={zoom}
       viewMode={viewMode}
       isFullPage={isFullPage}
@@ -727,7 +724,6 @@ function App() {
       onRemoveLibraryFile={handleRemoveFileFromLibrary}
       onSetCurrentPageFromManualAction={setCurrentPageFromManualAction}
       onSetCurrentPageFromScroll={setCurrentPageFromScroll}
-      onSetPageInput={setPageInput}
       onSetZoom={setZoom}
       onSetViewMode={setViewMode}
       onToggleFullPage={toggleFullPage}

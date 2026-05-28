@@ -18,7 +18,6 @@ interface ReaderWorkspaceProps {
   libraryOpen: boolean;
   infoOpen: boolean;
   currentPage: number;
-  pageInput: string;
   zoom: number;
   viewMode: 'single' | 'scroll';
   isFullPage: boolean;
@@ -32,7 +31,7 @@ interface ReaderWorkspaceProps {
   selectedHighlightId: string | null;
   notesByPage: NotesByPage;
   isHighlightMode: boolean;
-  manualScrollNonce: number; // <-- ADDED PROPERTY DEFINITION
+  manualScrollNonce: number;
   onToggleHighlightMode: () => void;
   onOpenLibrary: () => void;
   onCloseLibrary: () => void;
@@ -40,7 +39,6 @@ interface ReaderWorkspaceProps {
   onRemoveLibraryFile: (file: AvailableFile) => Promise<boolean>;
   onSetCurrentPageFromManualAction: (page: number) => void;
   onSetCurrentPageFromScroll: (page: number) => void;
-  onSetPageInput: (value: string) => void;
   onSetZoom: (value: number | ((current: number) => number)) => void;
   onSetViewMode: (value: 'single' | 'scroll') => void;
   onToggleFullPage: () => void;
@@ -69,7 +67,6 @@ export default function ReaderWorkspace({
   libraryOpen,
   infoOpen,
   currentPage,
-  pageInput,
   zoom,
   viewMode,
   isFullPage,
@@ -83,7 +80,7 @@ export default function ReaderWorkspace({
   selectedHighlightId,
   notesByPage,
   isHighlightMode,
-  manualScrollNonce, // <-- DESTRUCTURED VALUE FROM PROPS
+  manualScrollNonce,
   onToggleHighlightMode,
   onOpenLibrary,
   onCloseLibrary,
@@ -91,7 +88,6 @@ export default function ReaderWorkspace({
   onRemoveLibraryFile,
   onSetCurrentPageFromManualAction,
   onSetCurrentPageFromScroll,
-  onSetPageInput,
   onSetZoom,
   onSetViewMode,
   onToggleFullPage,
@@ -139,14 +135,11 @@ export default function ReaderWorkspace({
   const viewportStyle: CSSProperties = {
     flex: 1,
     width: '100%',
+    height: '100%',
     overflowY: 'auto',
     overflowX: 'hidden',
     backgroundColor: '#808080',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    padding: '16px',
+    position: 'relative',
     boxSizing: 'border-box'
   };
 
@@ -174,7 +167,6 @@ export default function ReaderWorkspace({
           selectedFile={selectedFile}
           currentPage={currentPage}
           totalPages={totalPages}
-          pageInput={pageInput}
           zoom={zoom}
           viewMode={viewMode}
           isFullPage={isFullPage}
@@ -182,7 +174,6 @@ export default function ReaderWorkspace({
           syncStatus={syncStatus}
           onOpenLibrary={onOpenLibrary}
           onSetCurrentPage={onSetCurrentPageFromManualAction}
-          onSetPageInput={onSetPageInput}
           onSetZoom={onSetZoom}
           onSetViewMode={onSetViewMode}
           onToggleFullPage={onToggleFullPage}
@@ -216,65 +207,92 @@ export default function ReaderWorkspace({
         />
       )}
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, width: '100%', position: 'relative' }}>
+      <div 
+        onClick={() => onSetSelectedHighlightId(null)}
+        style={{ 
+          display: 'flex', 
+          flex: 1, 
+          minHeight: 0, 
+          width: '100%', 
+          position: 'relative',
+          // MOBILE FIX: Stack sidebar vertically underneath on small viewports
+          flexDirection: isMobile ? 'column' : 'row' 
+        }}
+      >
         <div 
           ref={viewportRef} 
-          style={{ ...viewportStyle, width: 'auto', minWidth: 0, flex: 1, height: '100%' }}
-          onClick={() => {
+          style={viewportStyle}
+          onClick={(e) => {
             if (isMobile) {
               setToolbarVisible((prev) => !prev);
             }
           }}
         >
-          {selectedFile?.type === 'txt' && (
-            <TxtViewer
-              file={selectedFile}
-              currentPage={currentPage}
-              zoom={zoom}
-              onTotalPagesChange={onSetTotalPages}
-              viewMode={viewMode}
-              onCurrentPageChange={onSetCurrentPageFromScroll}
-              scrollContainerRef={viewportRef}
-              pageChangeSourceRef={pageChangeSourceRef}
-              highlightsByPage={notesByPage}
-              selectedHighlightId={selectedHighlightId}
-              onSelectHighlight={handleSelectHighlight}
-            />
-          )}
-          {selectedFile?.type === 'pdf' && (
-            <PdfViewer
-              file={selectedFile}
-              currentPage={currentPage}
-              zoom={zoom}
-              onTotalPagesChange={onSetTotalPages}
-              viewMode={viewMode}
-              onCurrentPageChange={onSetCurrentPageFromScroll}
-              scrollContainerRef={viewportRef}
-              pageChangeSourceRef={pageChangeSourceRef}
-              manualScrollNonce={manualScrollNonce} // <-- PASSED THROUGH TO PDFVIEWER
-              highlightsByPage={notesByPage}
-              selectedHighlightId={selectedHighlightId}
-              onSelectHighlight={handleSelectHighlight}
-            />
-          )}
-          {selectedFile?.type === 'docx' && (
-            <DocxViewer
-              file={selectedFile}
-              currentPage={currentPage}
-              zoom={zoom}
-              onTotalPagesChange={onSetTotalPages}
-              onStatusChange={onSetSyncStatus}
-              viewMode={viewMode}
-              onCurrentPageChange={onSetCurrentPageFromScroll}
-              scrollContainerRef={viewportRef}
-              pageChangeSourceRef={pageChangeSourceRef}
-              highlightsByPage={notesByPage}
-              selectedHighlightId={selectedHighlightId}
-              onSelectHighlight={handleSelectHighlight}
-            />
-          )}
+          <div 
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'flex-start', 
+              width: '100%', 
+              minHeight: '100%', 
+              padding: isMobile ? '8px' : '16px', // Milder dynamic margin on compact screens
+              boxSizing: 'border-box'
+            }}
+          >
+            {selectedFile?.type === 'txt' && (
+              <TxtViewer
+                file={selectedFile}
+                currentPage={currentPage}
+                zoom={zoom}
+                onTotalPagesChange={onSetTotalPages}
+                viewMode={viewMode}
+                onCurrentPageChange={onSetCurrentPageFromScroll}
+                scrollContainerRef={viewportRef}
+                pageChangeSourceRef={pageChangeSourceRef}
+                manualScrollNonce={manualScrollNonce}
+                highlightsByPage={notesByPage}
+                selectedHighlightId={selectedHighlightId}
+                onSelectHighlight={handleSelectHighlight}
+              />
+            )}
+            {selectedFile?.type === 'pdf' && (
+              <PdfViewer
+                file={selectedFile}
+                currentPage={currentPage}
+                zoom={zoom}
+                onTotalPagesChange={onSetTotalPages}
+                viewMode={viewMode}
+                onCurrentPageChange={onSetCurrentPageFromScroll}
+                scrollContainerRef={viewportRef}
+                pageChangeSourceRef={pageChangeSourceRef}
+                manualScrollNonce={manualScrollNonce}
+                highlightsByPage={notesByPage}
+                selectedHighlightId={selectedHighlightId}
+                onSelectHighlight={handleSelectHighlight}
+              />
+            )}
+            {selectedFile?.type === 'docx' && (
+              <DocxViewer
+                file={selectedFile}
+                currentPage={currentPage}
+                zoom={zoom}
+                onTotalPagesChange={onSetTotalPages}
+                onStatusChange={onSetSyncStatus}
+                viewMode={viewMode}
+                onCurrentPageChange={onSetCurrentPageFromScroll}
+                scrollContainerRef={viewportRef}
+                pageChangeSourceRef={pageChangeSourceRef}
+                manualScrollNonce={manualScrollNonce}
+                highlightsByPage={notesByPage}
+                selectedHighlightId={selectedHighlightId}
+                onSelectHighlight={handleSelectHighlight}
+              />
+            )}
+          </div>
         </div>
 
+        {/* RE-POSITIONED FLOATING HIGHLIGHT BUTTON */}
         <button
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
@@ -283,28 +301,29 @@ export default function ReaderWorkspace({
           }}
           style={{
             position: 'absolute',
-            bottom: '32px',
-            right: (!isMobile && notesOpen) ? `${notesPanelWidth + 32}px` : '32px',
+            // MOBILE FIX: Lower position to the toolbar line instead of floating on top of page content text nodes
+            bottom: isMobile ? '16px' : '32px',
+            right: (!isMobile && notesOpen) ? `${notesPanelWidth + 32}px` : isMobile ? '16px' : '32px',
             padding: isMobile ? '0' : '0 20px',
-            width: isMobile ? '56px' : 'auto',
-            height: isMobile ? '56px' : '48px',
-            borderRadius: isMobile ? '28px' : '24px',
+            width: isMobile ? '48px' : 'auto',
+            height: isMobile ? '48px' : '48px',
+            borderRadius: isMobile ? '24px' : '24px',
             backgroundColor: isHighlightMode ? '#facc15' : '#1e293b',
             color: isHighlightMode ? '#111827' : '#fff',
             border: isHighlightMode ? '2px solid #eab308' : '2px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
             cursor: 'pointer',
-            zIndex: 9999,
-            transition: 'right 0.3s ease, background-color 0.2s ease',
+            zIndex: isMobile ? 40 : 9999, // Ensure sheet overlays sit cleanly above it
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
           title={isHighlightMode ? "Highlight Mode: ON" : "Highlight Mode: OFF"}
           aria-label="Toggle Highlight Mode"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 11l-6 6v3h9l3-3" />
             <path d="M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
           </svg>
