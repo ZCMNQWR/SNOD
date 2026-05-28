@@ -55,7 +55,7 @@ function App() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [localPage, setLocalPage] = useState<number>(1);
   const [pageInput, setPageInput] = useState<string>('1');
-  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(0);
   const [notesByPage, setNotesByPage] = useState<NotesByPage>({});
   const [syncStatus, setSyncStatus] = useState<string>('Connecting...');
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
@@ -80,7 +80,7 @@ function App() {
     setCurrentPage(1);
     setLocalPage(1);
     setPageInput('1');
-    setTotalPages(1);
+    setTotalPages(0);
     setNotesByPage({});
     setSelectedHighlightId(null);
     setLibraryOpen(false);
@@ -135,7 +135,7 @@ function App() {
       setCurrentPage(1);
       setLocalPage(1);
       setPageInput('1');
-      setTotalPages(1);
+      setTotalPages(0);
       setNotesByPage({});
       setSelectedHighlightId(null);
     }
@@ -151,7 +151,7 @@ function App() {
       setCurrentPage(1);
       setLocalPage(1);
       setPageInput('1');
-      setTotalPages(1);
+      setTotalPages(0);
       setNotesByPage({});
       setSelectedHighlightId(null);
       setLibraryOpen(false);
@@ -725,28 +725,4 @@ function App() {
       onCloseLibrary={() => setLibraryOpen(false)}
       onSelectLibraryFile={openFileForCurrentSession}
       onRemoveLibraryFile={handleRemoveFileFromLibrary}
-      onSetCurrentPageFromManualAction={setCurrentPageFromManualAction}
-      onSetCurrentPageFromScroll={setCurrentPageFromScroll}
-      onSetPageInput={setPageInput}
-      onSetZoom={setZoom}
-      onSetViewMode={setViewMode}
-      onToggleFullPage={toggleFullPage}
-      onSignOut={handleSignOut}
-      onOpenNotes={() => setNotesOpen(true)}
-      onOpenInfo={() => setInfoOpen(true)}
-      onCloseInfo={() => setInfoOpen(false)}
-      onSaveProgress={() => void handleSyncData()}
-      onSetTotalPages={setTotalPages}
-      onSetSyncStatus={setSyncStatus}
-      onSetSelectedHighlightId={setSelectedHighlightId}
-      onCloseNotes={() => setNotesOpen(false)}
-      onResizeNotesMouseDown={handleNotesResizeMouseDown}
-      onUpdateNote={(value) => updatePageNote(localPage, value)}
-      onUpdateHighlightComment={(highlightId, comment) => updateHighlightComment(localPage, highlightId, comment)}
-      onRemoveHighlight={(highlightId) => removeHighlight(localPage, highlightId)}
-      onRenameHighlight={(highlightId, name) => renameHighlight(localPage, highlightId, name)}
-    />
-  );
-}
-
-export default App;
+      onSetCurrentPageFromManualActi
