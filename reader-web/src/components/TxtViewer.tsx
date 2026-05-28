@@ -12,6 +12,7 @@ interface TxtViewerProps {
   onCurrentPageChange: (page: number) => void;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   pageChangeSourceRef: RefObject<'manual' | 'scroll' | null>;
+  manualScrollNonce: number; // <-- ADD THIS LINE
   highlightsByPage: NotesByPage;
   selectedHighlightId?: string | null;
   onSelectHighlight?: (id: string | null) => void;
@@ -22,13 +23,11 @@ const normalizeSelectionText = (value: string) => value.replace(/\s+/g, ' ').tri
 function renderHighlightedText(text: string, highlights: HighlightEntry[], selectedId?: string | null, onSelectHighlight?: (id: string| null) => void): ReactNode {
   const matches: Array<{ start: number; end: number; highlight: HighlightEntry }> = [];
 
-  // Build normalized string and an index map from normalized index -> original index
   const indexMap: number[] = [];
   let normalizedBuilder = '';
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (/\s/.test(ch)) {
-      // collapse consecutive whitespace to a single space in normalized
       if (normalizedBuilder.endsWith(' ')) {
         continue;
       }
@@ -53,7 +52,7 @@ function renderHighlightedText(text: string, highlights: HighlightEntry[], selec
 
       const origStart = indexMap[found] ?? 0;
       const endNormIndex = found + target.length - 1;
-      const origEnd = (indexMap[endNormIndex] ?? origStart) + 1; // exclusive
+      const origEnd = (indexMap[endNormIndex] ?? origStart) + 1;
 
       matches.push({ start: origStart, end: origEnd, highlight });
       startIdx = found + target.length;
@@ -112,7 +111,7 @@ function renderHighlightedText(text: string, highlights: HighlightEntry[], selec
   return nodes;
 }
 
-export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMode, onCurrentPageChange, scrollContainerRef, pageChangeSourceRef, highlightsByPage, selectedHighlightId, onSelectHighlight }: TxtViewerProps) {
+export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMode, onCurrentPageChange, scrollContainerRef, pageChangeSourceRef, manualScrollNonce, highlightsByPage, selectedHighlightId, onSelectHighlight }: TxtViewerProps) {
   const [txtPages, setTxtPages] = useState<string[]>([]);
 
   const currentPageRef = useRef(currentPage);
@@ -181,7 +180,6 @@ export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMod
     return pages.length > 0 ? pages : [normalizedText];
   };
 
-  // Generic Pagination
   useEffect(() => {
     async function loadTxtFile() {
       try {
@@ -200,90 +198,72 @@ export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMod
     loadTxtFile();
   }, [file, onTotalPagesChange]);
 
-  // Scroll to page when currentPage changes in scroll mode
+  // 3. High-Priority Manual Scroll Syncing (Toolbar input corrections)
   useEffect(() => {
-    if (viewMode === 'scroll') {
-      if (pageChangeSourceRef.current !== 'manual') {
-        return;
-      }
+    if (viewMode !== 'scroll' || txtPages.length === 0) return;
+    if (pageChangeSourceRef.current !== 'manual') return;
 
-      const element = document.getElementById(`txt-page-${currentPage}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'auto', block: 'start' });
-        const timer = setTimeout(() => {
-          if (pageChangeSourceRef.current === 'manual') {
-            pageChangeSourceRef.current = null;
-          }
-        }, 150);
-        return () => clearTimeout(timer);
-      }
+    const container = scrollContainerRef.current;
+    const element = document.getElementById(`txt-page-${currentPage}`);
+    
+    if (element && container) {
+      const elRect = element.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const relativeTop = elRect.top - containerRect.top + container.scrollTop;
 
-      const fallbackTimer = setTimeout(() => {
+      container.scrollTo({
+        top: Math.max(0, Math.round(relativeTop)),
+        behavior: 'auto'
+      });
+
+      const unlockTimer = setTimeout(() => {
         if (pageChangeSourceRef.current === 'manual') {
           pageChangeSourceRef.current = null;
         }
-      }, 2000);
-      return () => clearTimeout(fallbackTimer);
+      }, 150);
+      return () => clearTimeout(unlockTimer);
     }
-  }, [currentPage, pageChangeSourceRef, viewMode]);
+  }, [currentPage, manualScrollNonce, viewMode, txtPages.length, scrollContainerRef, pageChangeSourceRef]);
 
+  // 4. Native Intersection Observer for instant toolbar updates on scroll
   useEffect(() => {
-    if (viewMode !== 'scroll' || txtPages.length === 0) {
-      return;
-    }
+    if (viewMode !== 'scroll' || txtPages.length === 0) return;
 
     const container = scrollContainerRef.current;
-    if (!container) {
-      return;
-    }
+    if (!container) return;
 
-    let animationFrameId = 0;
+    const observerOptions = {
+      root: container,
+      rootMargin: '-25% 0px -70% 0px', 
+      threshold: 0
+    };
 
-    const updateCurrentPageFromScroll = () => {
-      // If a manual page-change is flagged (for example when toggling
-      // from single->scroll), do not override `currentPage` based on
-      // container position until manual scroll completes.
-      if (pageChangeSourceRef?.current === 'manual') {
-        return;
-      }
-      const containerRect = container.getBoundingClientRect();
-      const topThreshold = containerRect.top + containerRect.height * 0.4;
-      let pageAtTop = 1;
+    const handleIntersection = (entries: IntersectionObserverEntry[]) => {
+      if (pageChangeSourceRef.current === 'manual') return;
 
-      for (let pageNum = 1; pageNum <= txtPages.length; pageNum += 1) {
-        const element = document.getElementById(`txt-page-${pageNum}`);
-        if (!element) {
-          continue;
+      const visibleEntry = entries.find(entry => entry.isIntersecting);
+      if (visibleEntry) {
+        const idMatch = visibleEntry.target.id.match(/-(\d+)$/);
+        if (idMatch) {
+          const pageNum = parseInt(idMatch[1], 10);
+          if (pageNum !== currentPageRef.current) {
+            onCurrentPageChange(pageNum);
+          }
         }
-
-        const rect = element.getBoundingClientRect();
-        if (rect.top <= topThreshold) {
-          pageAtTop = pageNum;
-        } else {
-          break;
-        }
-      }
-
-      if (pageAtTop !== currentPageRef.current) {
-        onCurrentPageChange(pageAtTop);
       }
     };
 
-    const handleScroll = () => {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = requestAnimationFrame(updateCurrentPageFromScroll);
-    }
+    const observer = new IntersectionObserver(handleIntersection, observerOptions);
 
-    updateCurrentPageFromScroll();
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll);
+    for (let pageNum = 1; pageNum <= txtPages.length; pageNum++) {
+      const element = document.getElementById(`txt-page-${pageNum}`);
+      if (element) observer.observe(element);
+    }
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
-      container.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
+      observer.disconnect();
     };
-  }, [onCurrentPageChange, scrollContainerRef, txtPages.length, viewMode, pageChangeSourceRef]);
+  }, [txtPages.length, onCurrentPageChange, scrollContainerRef, viewMode, pageChangeSourceRef]);
 
   return (
     <div style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '0 20px 20px', boxSizing: 'border-box', fontSize: `${1 * (zoom / 100)}rem`, transition: 'font-size 0.2s ease' }}>

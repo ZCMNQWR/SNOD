@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, type CSSProperties } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { HighlightEntry } from '../types/notes';
 
 interface NotesSidebarProps {
@@ -79,24 +79,47 @@ export default function NotesSidebar({
 
   return (
     <aside
-      onClick={(e) => e.stopPropagation()} // <-- FIX: Stops clicks inside sidebar from triggering background unselection
+      onClick={(e) => e.stopPropagation()} 
       style={{
+        // MOBILE FIX: Transform into a slide-up sheets layout instead of a squished horizontal column splitting screens
         width: isMobile ? '100vw' : width,
         minWidth: isMobile ? '100vw' : 260,
         maxWidth: isMobile ? '100vw' : '60vw',
-        height: '100%',
+        height: isMobile ? '70vh' : '100%',
         background: 'linear-gradient(180deg, #111827 0%, #0f172a 100%)',
         color: '#e5e7eb',
-        borderLeft: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: '-10px 0 24px rgba(0,0,0,0.18)',
+        borderLeft: isMobile ? 'none' : '1px solid rgba(255,255,255,0.08)',
+        borderTop: isMobile ? '1px solid rgba(255,255,255,0.15)' : 'none',
+        boxShadow: '-10px 0 32px rgba(0,0,0,0.3)',
         display: 'flex',
         flexDirection: 'column',
-        position: isMobile ? 'absolute' : 'relative',
-        zIndex: isMobile ? 50 : 1,
+        position: isMobile ? 'fixed' : 'relative',
+        zIndex: 10000, // Pop fully over documents and action buttons
+        bottom: 0,
         right: 0,
         overflow: 'hidden',
+        borderTopLeftRadius: isMobile ? '20px' : '0px',
+        borderTopRightRadius: isMobile ? '20px' : '0px',
+        animation: isMobile ? 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards' : 'none'
       }}
     >
+      {/* Dynamic keyframe rule injector for native sliding lookups */}
+      {isMobile && (
+        <style>{`
+          @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+          }
+        `}</style>
+      )}
+
+      {/* MOBILE FIX: Bottom sheet slide drag indicator accent */}
+      {isMobile && (
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '10px 0 2px' }}>
+          <div style={{ width: '40px', height: '5px', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: '3px' }} />
+        </div>
+      )}
+
       {!isMobile && (
         <div
           onMouseDown={onResizeMouseDown}
@@ -114,7 +137,7 @@ export default function NotesSidebar({
         />
       )}
 
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ padding: isMobile ? '8px 16px 14px' : '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>Notes</div>
           <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Page {currentPage} / {totalPages}</div>
@@ -126,15 +149,17 @@ export default function NotesSidebar({
             background: 'rgba(255,255,255,0.08)',
             color: '#fff',
             borderRadius: 6,
-            padding: '6px 10px',
+            padding: '6px 12px',
             cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: 600
           }}
         >
-          Close
+          Done
         </button>
       </div>
 
-      <div style={{ padding: 16, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
+      <div style={{ padding: 16, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16, flex: 1, paddingBottom: isMobile ? '40px' : '16px' }}>
         <section>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>Page note</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -144,7 +169,7 @@ export default function NotesSidebar({
               placeholder="Write notes for this page..."
               style={{
                 width: '100%',
-                height: noteHeight,
+                height: isMobile ? '100px' : noteHeight, // Mild fixed sizing on mobile to protect scrolling space
                 resize: 'none',
                 borderRadius: 10,
                 border: '1px solid rgba(255,255,255,0.08)',
@@ -154,55 +179,42 @@ export default function NotesSidebar({
                 boxSizing: 'border-box',
                 outline: 'none',
                 lineHeight: 1.5,
+                fontSize: '14px'
               }}
             />
 
-            <div
-              onMouseDown={(e: React.MouseEvent) => {
-                e.preventDefault();
-                resizeRef.current = { startY: e.clientY, startHeight: noteHeight };
-                const handleMove = (ev: globalThis.MouseEvent) => {
-                  if (!resizeRef.current) return;
-                  const delta = ev.clientY - resizeRef.current.startY;
-                  const next = Math.max(80, Math.min(800, resizeRef.current.startHeight + delta));
-                  setNoteHeight(next);
-                };
-                const handleUp = () => {
-                  resizeRef.current = null;
-                  window.removeEventListener('mousemove', handleMove);
-                  window.removeEventListener('mouseup', handleUp);
-                };
-                window.addEventListener('mousemove', handleMove);
-                window.addEventListener('mouseup', handleUp);
-              }}
-              onTouchStart={(e: React.TouchEvent) => {
-                resizeRef.current = { startY: e.touches[0].clientY, startHeight: noteHeight };
-                const handleTouchMove = (ev: globalThis.TouchEvent) => {
-                  if (!resizeRef.current) return;
-                  const delta = ev.touches[0].clientY - resizeRef.current.startY;
-                  const next = Math.max(80, Math.min(800, resizeRef.current.startHeight + delta));
-                  setNoteHeight(next);
-                };
-                const handleTouchEnd = () => {
-                  resizeRef.current = null;
-                  window.removeEventListener('touchmove', handleTouchMove);
-                  window.removeEventListener('touchend', handleTouchEnd);
-                };
-                window.addEventListener('touchmove', handleTouchMove, { passive: true });
-                window.addEventListener('touchend', handleTouchEnd);
-              }}
-              style={{ height: 8, cursor: 'ns-resize', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              aria-hidden="true"
-            >
-              <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 4 }} />
-            </div>
+            {!isMobile && (
+              <div
+                onMouseDown={(e: React.MouseEvent) => {
+                  e.preventDefault();
+                  resizeRef.current = { startY: e.clientY, startHeight: noteHeight };
+                  const handleMove = (ev: globalThis.MouseEvent) => {
+                    if (!resizeRef.current) return;
+                    const delta = ev.clientY - resizeRef.current.startY;
+                    const next = Math.max(80, Math.min(800, resizeRef.current.startHeight + delta));
+                    setNoteHeight(next);
+                  };
+                  const handleUp = () => {
+                    resizeRef.current = null;
+                    window.removeEventListener('mousemove', handleMove);
+                    window.removeEventListener('mouseup', handleUp);
+                  };
+                  window.addEventListener('mousemove', handleMove);
+                  window.addEventListener('mouseup', handleUp);
+                }}
+                style={{ height: 8, cursor: 'ns-resize', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                aria-hidden="true"
+              >
+                <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 4 }} />
+              </div>
+            )}
           </div>
           {!note.trim() && highlights.length === 0 && (
             <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>No notes yet.</div>
           )}
         </section>
 
-        <section>
+        <section style={{ marginBottom: isMobile ? '24px' : '0px' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>Highlights</div>
           {highlights.length === 0 ? (
             <div style={{ fontSize: 12, color: '#94a3b8' }}>Select text in the document to create a highlight.</div>
@@ -217,7 +229,7 @@ export default function NotesSidebar({
                   <div
                     key={highlight.id}
                     onClick={(e) => {
-                      e.stopPropagation(); // Stop parent bubble sequence
+                      e.stopPropagation(); 
                       onSelectHighlight?.(highlight.id);
                     }}
                     style={{
@@ -309,7 +321,7 @@ export default function NotesSidebar({
                       placeholder="Add a comment for this highlight..."
                       style={{
                         width: '100%',
-                        minHeight: 88,
+                        minHeight: 70,
                         resize: 'vertical',
                         borderRadius: 8,
                         border: '1px solid rgba(255,255,255,0.08)',
@@ -319,6 +331,7 @@ export default function NotesSidebar({
                         boxSizing: 'border-box',
                         outline: 'none',
                         lineHeight: 1.45,
+                        fontSize: '14px'
                       }}
                     />
                   </div>
