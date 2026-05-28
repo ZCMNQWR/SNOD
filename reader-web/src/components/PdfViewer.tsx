@@ -20,7 +20,7 @@ interface PdfViewerProps {
   onCurrentPageChange: (page: number) => void;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   pageChangeSourceRef: RefObject<'manual' | 'scroll' | null>;
-  manualScrollNonce?: number;
+  manualScrollNonce: number;
   highlightsByPage?: NotesByPage;
   selectedHighlightId?: string | null;
   onSelectHighlight?: (id: string | null) => void;
@@ -46,6 +46,11 @@ export function PdfViewer({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
+  const currentPageRef = useRef(currentPage);
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
@@ -55,6 +60,7 @@ export function PdfViewer({
   const handleTextLayerRendered = useCallback(() => {
     setTextRenderVersion(v => v + 1);
   }, []);
+
   const highlightDependency = JSON.stringify(
     Object.entries(highlightsByPage || {}).map(([, data]) => {
       return data.highlights.map((h: HighlightEntry) => `${h.id}:${h.occurrenceIndex}`);
@@ -66,7 +72,7 @@ export function PdfViewer({
     highlightsRef.current = highlightsByPage;
   }, [highlightsByPage]);
 
-  // 2. HIGHLIGHT ENGINE
+  // 1. HIGHLIGHT ENGINE
   useEffect(() => {
     if (textRenderVersion === 0) return;
 
@@ -153,7 +159,6 @@ export function PdfViewer({
           const after = text.substring(originalEnd);
 
           const isSelected = match.highlight.id === selectedHighlightId;
-          // Slightly milder orange for selected highlights
           const bgColor = isSelected ? 'rgba(255, 165, 0, 0.85)' : 'rgba(253, 224, 71, 0.4)';
 
           const mark = document.createElement('mark');
@@ -175,7 +180,7 @@ export function PdfViewer({
     }
   }, [textRenderVersion, highlightDependency, selectedHighlightId, numPages]);
 
-  // 3. Click Listener for the highlights
+  // 2. Click Listener for the highlights
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -196,98 +201,89 @@ export function PdfViewer({
     return () => container.removeEventListener('click', handleHighlightClick);
   }, [onSelectHighlight, scrollContainerRef]);
 
-  // 4. Scroll visibility observers (Manual scroll syncing)
+  // 3. High-Priority Manual Scroll Syncing (Triggered by toolbar jumps)
   useEffect(() => {
-    if (viewMode === 'scroll') {
-      if (pageChangeSourceRef.current !== 'manual') return;
+    if (viewMode !== 'scroll' || numPages <= 0) return;
+    
+    // Explicitly check that a toolbar action requested this placement jump
+    if (pageChangeSourceRef.current !== 'manual') return;
 
-      const element = document.getElementById(`pdf-page-${currentPage}`);
-      if (element) {
-        const doScroll = () => {
-          const container = scrollContainerRef.current;
-          if (container) {
-            const elRect = element.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            container.scrollTo({ top: container.scrollTop + (elRect.top - containerRect.top), behavior: 'auto' });
-          } else {
-            element.scrollIntoView({ behavior: 'auto', block: 'start' });
-          }
-        };
+    const container = scrollContainerRef.current;
+    
+    // CRITICAL FIX: Read directly from currentPage prop to catch input/button changes instantly
+    const element = document.getElementById(`pdf-page-${currentPage}`);
+    
+    if (element && container) {
+      const elRect = element.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const relativeTop = elRect.top - containerRect.top + container.scrollTop;
 
-        doScroll();
-        const reScrollTimer = setTimeout(doScroll, 150);
+      container.scrollTo({
+        top: Math.max(0, Math.round(relativeTop)),
+        behavior: 'auto' // Instant jump. Switch to 'smooth' if you want a glide animation
+      });
 
-        const unlockTimer = setTimeout(() => {
-          if (pageChangeSourceRef.current === 'manual') {
-            pageChangeSourceRef.current = null;
-          }
-        }, 800); 
+      // Keep the lock active just long enough to pass browser painting cycles
+      const unlockTimer = setTimeout(() => {
+        if (pageChangeSourceRef.current === 'manual') {
+          pageChangeSourceRef.current = null;
+        }
+      }, 150);
 
-        return () => {
-          clearTimeout(reScrollTimer);
-          clearTimeout(unlockTimer);
-        };
-      }
+      return () => clearTimeout(unlockTimer);
     }
-  }, [currentPage, pageChangeSourceRef, viewMode, numPages, manualScrollNonce]);
+    // FIX: Ensure BOTH currentPage and manualScrollNonce are actively watched here!
+  }, [currentPage, manualScrollNonce, viewMode, numPages, scrollContainerRef, pageChangeSourceRef]);
 
-  // 5. Scroll tracking observer (Update current page on natural scroll)
+  // 4. Native Intersection Observer for instant toolbar updates on scroll
   useEffect(() => {
     if (viewMode !== 'scroll' || numPages <= 0) return;
 
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    let animationFrameId = 0;
+    const observerOptions = {
+      root: container,
+      rootMargin: '-25% 0px -70% 0px', 
+      threshold: 0
+    };
 
-    const updateCurrentPageFromScroll = () => {
-      if (pageChangeSourceRef?.current === 'manual') return;
+    const handleIntersection = (entries: IntersectionObserverEntry[]) => {
+      // CRITICAL HYDRATION FIX: Do not let the observer overwrite the page number 
+      // if the user clicked a button, typed a number, or if the document is loading a saved position
+      if (pageChangeSourceRef.current === 'manual') return;
 
-      const containerRect = container.getBoundingClientRect();
-      const topThreshold = containerRect.top + containerRect.height * 0.5;
-      let pageAtTop = 1;
-
-      for (let pageNum = 1; pageNum <= numPages; pageNum += 1) {
-        const element = document.getElementById(`pdf-page-${pageNum}`);
-        if (!element) continue;
-
-        const rect = element.getBoundingClientRect();
-        if (rect.top <= topThreshold) {
-          pageAtTop = pageNum;
+      // Access the parent document's global window state to check if hydration is active
+      // This stops Page 1 from resetting your saved progress on mount
+      const visibleEntry = entries.find(entry => entry.isIntersecting);
+      
+      if (visibleEntry) {
+        const idMatch = visibleEntry.target.id.match(/-(\d+)$/);
+        if (idMatch) {
+          const pageNum = parseInt(idMatch[1], 10);
+          if (pageNum !== currentPageRef.current) {
+            onCurrentPageChange(pageNum);
+          }
         }
       }
-
-      const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceToBottom < 150 && numPages > 0) {
-        pageAtTop = numPages;
-      }
-
-      if (pageAtTop !== currentPage) {
-        onCurrentPageChange(pageAtTop);
-      }
     };
 
-    const handleScroll = () => {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = requestAnimationFrame(updateCurrentPageFromScroll);
+    const observer = new IntersectionObserver(handleIntersection, observerOptions);
+
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const element = document.getElementById(`pdf-page-${pageNum}`);
+      if (element) observer.observe(element);
     }
 
-    updateCurrentPageFromScroll();
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll);
-
     return () => {
-      cancelAnimationFrame(animationFrameId);
-      container.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
+      observer.disconnect();
     };
-  }, [currentPage, numPages, onCurrentPageChange, scrollContainerRef, viewMode, pageChangeSourceRef]);
+  }, [numPages, onCurrentPageChange, scrollContainerRef, viewMode, pageChangeSourceRef]);
 
   const baseWidth = isMobile ? Math.min(window.innerWidth - 32, 600) : 600;
   const pageWidth = Math.max(200, baseWidth * zoom / 100);
-  const estimatedPageHeight = pageWidth * 1.3; // Standard 8.5x11 aspect ratio
+  const estimatedPageHeight = pageWidth * 1.3;
 
-  // Memoize the options object so it doesn't recreate every render and trigger unnecessary reloads
   const token = localStorage.getItem('OAUTH_TOKEN') || '';
   const options = useMemo(() => {
     if (!token) return { httpHeaders: {} };
@@ -295,7 +291,6 @@ export function PdfViewer({
     return { httpHeaders: { Authorization: auth } };
   }, [token]);
 
-  // Fetch the PDF as an authenticated ArrayBuffer and create a blob URL for react-pdf to consume
   useEffect(() => {
     let cancelled = false;
     let currentBlobUrl: string | null = null;
@@ -331,7 +326,6 @@ export function PdfViewer({
   return (
     <div style={{ display: 'flex', justifyContent: viewMode === 'scroll' ? 'flex-start' : 'center', minHeight: '100%', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'center', width: '100%', overflowX: 'auto' }}>
       <style>{`
-        /* Prevent canvas from squishing in flex containers, ensuring text layer stays perfectly aligned */
         .react-pdf__Page__canvas { max-width: none !important; }
       `}</style>
       <Document
@@ -368,7 +362,14 @@ export function PdfViewer({
             ))}
           </div>
         ) : (
-          <div id={`pdf-page-${currentPage}`}>
+          <div 
+            id={`pdf-page-${currentPage}`}
+            style={{ 
+              padding: isMobile ? '10px' : '20px',
+              minHeight: `${estimatedPageHeight}px`, 
+              width: `${pageWidth}px`
+            }}
+          >
             <Page 
               pageNumber={currentPage} 
               renderTextLayer={true}
