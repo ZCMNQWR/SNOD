@@ -1,4 +1,4 @@
-import { useState, useEffect, type RefObject, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type RefObject, type ReactNode } from 'react';
 import { getFileStreamUrl } from '../services/api';
 import type { AvailableFile } from '../services/api';
 import type { HighlightEntry, NotesByPage } from '../types/notes';
@@ -115,6 +115,11 @@ function renderHighlightedText(text: string, highlights: HighlightEntry[], selec
 export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMode, onCurrentPageChange, scrollContainerRef, pageChangeSourceRef, highlightsByPage, selectedHighlightId, onSelectHighlight }: TxtViewerProps) {
   const [txtPages, setTxtPages] = useState<string[]>([]);
 
+  const currentPageRef = useRef(currentPage);
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
   const splitTextIntoPages = (fullText: string, maxCharsPerPage = 2600) => {
     const normalizedText = fullText.replace(/\r\n/g, '\n').trim();
     if (!normalizedText) {
@@ -202,13 +207,23 @@ export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMod
         return;
       }
 
-      setTimeout(() => {
-        const element = document.getElementById(`txt-page-${currentPage}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'auto', block: 'start' });
+      const element = document.getElementById(`txt-page-${currentPage}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'auto', block: 'start' });
+        const timer = setTimeout(() => {
+          if (pageChangeSourceRef.current === 'manual') {
+            pageChangeSourceRef.current = null;
+          }
+        }, 150);
+        return () => clearTimeout(timer);
+      }
+
+      const fallbackTimer = setTimeout(() => {
+        if (pageChangeSourceRef.current === 'manual') {
+          pageChangeSourceRef.current = null;
         }
-        pageChangeSourceRef.current = null;
-      }, 100);
+      }, 2000);
+      return () => clearTimeout(fallbackTimer);
     }
   }, [currentPage, pageChangeSourceRef, viewMode]);
 
@@ -249,7 +264,7 @@ export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMod
         }
       }
 
-      if (pageAtTop !== currentPage) {
+      if (pageAtTop !== currentPageRef.current) {
         onCurrentPageChange(pageAtTop);
       }
     };
@@ -268,15 +283,15 @@ export function TxtViewer({ file, currentPage, zoom, onTotalPagesChange, viewMod
       container.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', handleScroll);
     };
-  }, [currentPage, onCurrentPageChange, scrollContainerRef, txtPages.length, viewMode, pageChangeSourceRef]);
+  }, [onCurrentPageChange, scrollContainerRef, txtPages.length, viewMode, pageChangeSourceRef]);
 
   return (
-    <div style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '0 20px 20px', boxSizing: 'border-box', transform: `scale(${zoom / 100})`, transformOrigin: 'top center', transition: 'transform 0.2s ease' }}>
+    <div style={{ width: '100%', maxWidth: '900px', margin: '0 auto', padding: '0 20px 20px', boxSizing: 'border-box', fontSize: `${1 * (zoom / 100)}rem`, transition: 'font-size 0.2s ease' }}>
       {viewMode === 'scroll' ? (
         <div>
           {txtPages.map((page, index) => (
             <div key={index} id={`txt-page-${index + 1}`} style={{ marginBottom: '40px', padding: '28px 32px', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 16px 40px rgba(0,0,0,0.14)', border: '1px solid rgba(0,0,0,0.08)', whiteSpace: 'pre-line', color: '#111', lineHeight: '1.7' }}>
-              <div style={{ fontSize: '12px', color: '#666', marginBottom: '14px', fontWeight: 'bold', fontStyle: 'normal' }}>--- Page {index + 1} ---</div>
+              <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '14px', fontWeight: 'bold', fontStyle: 'normal' }}>--- Page {index + 1} ---</div>
               {renderHighlightedText(page, highlightsByPage[index + 1]?.highlights || [], selectedHighlightId, onSelectHighlight)}
             </div>
           ))}

@@ -37,6 +37,11 @@ export function DocxViewer({
   const [renderVersion, setRenderVersion] = useState(0);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
+  const currentPageRef = useRef(currentPage);
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
@@ -337,13 +342,18 @@ export function DocxViewer({
       }, 150);
       return () => clearTimeout(timer);
     }
-    // If the element doesn't exist, we DO NOT clear the lock.
-    // The effect will re-run automatically when renderVersion updates.
+
+    const fallbackTimer = setTimeout(() => {
+      if (pageChangeSourceRef.current === 'manual') {
+        pageChangeSourceRef.current = null;
+      }
+    }, 2000);
+    return () => clearTimeout(fallbackTimer);
   }, [currentPage, pageChangeSourceRef, viewMode, renderVersion]);
 
   // Scroll observer
   useEffect(() => {
-    if (viewMode !== 'scroll' || currentPage < 1) {
+    if (viewMode !== 'scroll') {
       return;
     }
 
@@ -375,7 +385,7 @@ export function DocxViewer({
         }
       });
 
-      if (pageAtTop !== currentPage) {
+      if (pageAtTop !== currentPageRef.current) {
         onCurrentPageChange(pageAtTop);
       }
     };
@@ -394,7 +404,7 @@ export function DocxViewer({
       container.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', handleScroll);
     };
-  }, [currentPage, onCurrentPageChange, renderVersion, scrollContainerRef, viewMode, pageChangeSourceRef]);
+  }, [onCurrentPageChange, renderVersion, scrollContainerRef, viewMode, pageChangeSourceRef]);
 
   return (
     <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: isMobile ? 'flex-start' : 'center' }}>

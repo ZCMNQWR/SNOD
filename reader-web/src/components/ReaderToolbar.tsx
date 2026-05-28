@@ -63,6 +63,15 @@ export default function ReaderToolbar({
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [menuOpen]);
 
+  // Helper handler to prevent global pointerdown menu unmounting bugs
+  const handleMenuAction = (event: React.MouseEvent, action: () => void) => {
+    event.preventDefault();
+    setMenuHover(null);
+    setMenuOpen(false);
+    action();
+  };
+
+  // Styles
   const toolbarStyle: CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -92,6 +101,20 @@ export default function ReaderToolbar({
     gap: '6px'
   };
 
+  const dropdownActionButtonStyle = (isHovered: boolean, isDanger = false): CSSProperties => ({
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '500',
+    border: 'none',
+    backgroundColor: isHovered ? 'rgba(96, 165, 250, 0.22)' : 'transparent',
+    color: isDanger ? '#fca5a5' : isHovered ? '#ffffff' : '#dbeafe',
+    textAlign: 'left',
+    marginTop: isDanger ? '2px' : '0px'
+  });
+
   return (
     <div style={toolbarStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -110,11 +133,12 @@ export default function ReaderToolbar({
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <button
           disabled={currentPage <= 1}
-          onClick={() => onSetCurrentPage(Math.max(1, currentPage - 1))}
+          onClick={() => {
+            onPageChangeSourceManual();
+            onSetCurrentPage(Math.max(1, currentPage - 1));
+          }}
           style={{ ...toolbarButtonStyle, opacity: currentPage <= 1 ? 0.5 : 1 }}
           title="Previous page"
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           ◀
         </button>
@@ -143,7 +167,9 @@ export default function ReaderToolbar({
 
             const val = parseInt(pageInput, 10);
             if (!isNaN(val) && val >= 1 && val <= totalPages) {
+              onPageChangeSourceManual();
               onSetCurrentPage(val);
+              e.currentTarget.blur();
             } else {
               onSetPageInput(String(currentPage));
             }
@@ -156,11 +182,12 @@ export default function ReaderToolbar({
 
         <button
           disabled={currentPage >= totalPages}
-          onClick={() => onSetCurrentPage(Math.min(totalPages, currentPage + 1))}
+          onClick={() => {
+            onPageChangeSourceManual();
+            onSetCurrentPage(Math.min(totalPages, currentPage + 1));
+          }}
           style={{ ...toolbarButtonStyle, opacity: currentPage >= totalPages ? 0.5 : 1 }}
           title="Next page"
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           ▶
         </button>
@@ -179,8 +206,6 @@ export default function ReaderToolbar({
           onClick={() => onSetZoom((current) => Math.max(50, current - 10))}
           style={toolbarButtonStyle}
           title="Zoom out"
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           −
         </button>
@@ -203,8 +228,6 @@ export default function ReaderToolbar({
           onClick={() => onSetZoom(100)}
           style={{ ...toolbarButtonStyle, fontSize: '14px', fontWeight: 'bold' }}
           title="Reset zoom"
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           ↺
         </button>
@@ -213,8 +236,6 @@ export default function ReaderToolbar({
           onClick={() => onSetZoom((current) => Math.min(200, current + 10))}
           style={toolbarButtonStyle}
           title="Zoom in"
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           +
         </button>
@@ -233,8 +254,6 @@ export default function ReaderToolbar({
           style={toolbarButtonStyle}
           title={viewMode === 'scroll' ? 'Switch to single page view' : 'Switch to continuous scroll view'}
           aria-label={viewMode === 'scroll' ? 'Switch to single page view' : 'Switch to continuous scroll view'}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           {viewMode === 'scroll' ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -253,10 +272,8 @@ export default function ReaderToolbar({
           onClick={onToggleFullPage}
           style={toolbarButtonStyle}
           title={isFullPage ? 'Exit fullscreen' : 'Fullscreen'}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
-          {isFullPage ? '⛶' : '⛶'}
+          ⛶
         </button>
 
         <div style={{ width: '1px', height: '24px', backgroundColor: '#5C5C5C' }} />
@@ -269,8 +286,6 @@ export default function ReaderToolbar({
             }}
             style={toolbarButtonStyle}
             title="More options"
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#4C4C4C')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
           >
             ⋯
           </button>
@@ -283,7 +298,7 @@ export default function ReaderToolbar({
               marginTop: '4px',
               minWidth: '160px',
               padding: '8px',
-              backgroundColor: 'rgba(15, 23, 42, 0.82)',
+              backgroundColor: 'rgba(15, 23, 42, 0.92)',
               borderRadius: '6px',
               border: '1px solid rgba(255, 255, 255, 0.12)',
               boxShadow: '0 8px 24px rgba(0,0,0,0.24)',
@@ -298,102 +313,43 @@ export default function ReaderToolbar({
                     {userId}
                   </div>
                 </div>
+                
                 <button
                   type="button"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    setMenuHover(null);
-                    setMenuOpen(false);
-                    onOpenNotes();
-                  }}
+                  onMouseDown={(e) => handleMenuAction(e, onOpenNotes)}
                   onMouseEnter={() => setMenuHover('notes')}
                   onMouseLeave={() => setMenuHover(null)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    border: 'none',
-                    backgroundColor: menuHover === 'notes' ? 'rgba(96, 165, 250, 0.22)' : 'transparent',
-                    color: menuHover === 'notes' ? '#ffffff' : '#dbeafe',
-                    textAlign: 'left'
-                  }}
+                  style={dropdownActionButtonStyle(menuHover === 'notes')}
                 >
                   Notes
                 </button>
+                
                 <button
-                  onClick={() => {
-                    setMenuHover(null);
-                    setMenuOpen(false);
-                    onOpenInfo();
-                  }}
+                  type="button"
+                  onMouseDown={(e) => handleMenuAction(e, onOpenInfo)}
                   onMouseEnter={() => setMenuHover('info')}
                   onMouseLeave={() => setMenuHover(null)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    border: 'none',
-                    backgroundColor: menuHover === 'info' ? 'rgba(96, 165, 250, 0.22)' : 'transparent',
-                    color: menuHover === 'info' ? '#ffffff' : '#dbeafe',
-                    textAlign: 'left'
-                  }}
+                  style={dropdownActionButtonStyle(menuHover === 'info')}
                 >
                   Info
                 </button>
+                
                 <button
-                  onClick={() => {
-                    setMenuHover(null);
-                    setMenuOpen(false);
-                    onSaveProgress();
-                  }}
-                  onMouseEnter={() => setMenuHover(null)}
-                  onMouseLeave={() => setMenuHover(null)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    color: '#dbeafe',
-                    textAlign: 'left'
-                  }}
+                  type="button"
+                  onMouseDown={(e) => handleMenuAction(e, onSaveProgress)}
+                  style={dropdownActionButtonStyle(false)}
                 >
                   Save progress
                 </button>
+                
                 <div style={{ padding: '10px 12px 2px', fontSize: '12px', lineHeight: 1.4, color: '#94a3b8', borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '6px' }}>
                   {syncStatus}
                 </div>
+                
                 <button
                   type="button"
-                  onClick={() => {
-                    setMenuHover(null);
-                    setMenuOpen(false);
-                    onSignOut();
-                  }}
-                  onMouseEnter={() => setMenuHover(null)}
-                  onMouseLeave={() => setMenuHover(null)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    color: '#fca5a5',
-                    textAlign: 'left',
-                    marginTop: '2px'
-                  }}
+                  onMouseDown={(e) => handleMenuAction(e, onSignOut)}
+                  style={dropdownActionButtonStyle(false, true)}
                 >
                   Sign out
                 </button>

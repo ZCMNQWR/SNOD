@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { saveProgress, getProgress, getAvailableFiles } from './services/api';
 import type { DocumentProgress, AvailableFile } from './services/api';
 import AuthGate from './components/AuthGate';
@@ -51,13 +51,16 @@ function App() {
   const [libraryOpen, setLibraryOpen] = useState<boolean>(false);
   const [infoOpen, setInfoOpen] = useState<boolean>(false);
 
+  // Decoupled page states for instant local updates vs debounced cloud sync
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [localPage, setLocalPage] = useState<number>(1);
   const [pageInput, setPageInput] = useState<string>('1');
   const [totalPages, setTotalPages] = useState<number>(1);
   const [notesByPage, setNotesByPage] = useState<NotesByPage>({});
   const [syncStatus, setSyncStatus] = useState<string>('Connecting...');
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [isHighlightMode, setIsHighlightMode] = useState<boolean>(false);
+  const [manualScrollNonce, setManualScrollNonce] = useState<number>(0);
 
   const AUTO_SAVE_DELAY_MS = 5000;
 
@@ -75,12 +78,14 @@ function App() {
     pendingLoadedPageRef.current = null;
     setSelectedFile(null);
     setCurrentPage(1);
+    setLocalPage(1);
     setPageInput('1');
     setTotalPages(1);
     setNotesByPage({});
     setSelectedHighlightId(null);
     setLibraryOpen(false);
     setInfoOpen(false);
+    setManualScrollNonce(0);
   };
 
   const handleSignOut = () => {
@@ -103,7 +108,6 @@ function App() {
     };
   }, []);
 
-  // Load Dynamic Storage Library
   const refreshLibrary = async (selectFirstIfNeeded = false): Promise<AvailableFile[]> => {
     const files = await getAvailableFiles();
     const defaultEpoch = new Date('2026-05-23T00:00:00Z').getTime();
@@ -129,6 +133,7 @@ function App() {
     if (wasSelected) {
       setSelectedFile(null);
       setCurrentPage(1);
+      setLocalPage(1);
       setPageInput('1');
       setTotalPages(1);
       setNotesByPage({});
@@ -144,6 +149,7 @@ function App() {
       }
 
       setCurrentPage(1);
+      setLocalPage(1);
       setPageInput('1');
       setTotalPages(1);
       setNotesByPage({});
@@ -176,8 +182,8 @@ function App() {
   }, [isSignedIn]);
 
   useEffect(() => {
-    void Promise.resolve().then(() => setPageInput(String(currentPage)));
-  }, [currentPage, selectedFile]);
+    void Promise.resolve().then(() => setPageInput(String(localPage)));
+  }, [localPage, selectedFile]);
 
   useEffect(() => {
     if (!selectedFile?.id) {
@@ -218,13 +224,37 @@ function App() {
     };
   }, [currentPage, notesByPage, selectedFile?.id, selectedFile?.type, userId]);
 
+  useEffect(() => {
+    if (viewMode === 'scroll' && localPage > 1) {
+      pageChangeSourceRef.current = 'manual';
+      const idPrefix = selectedFile?.type || 'pdf';
+      
+      const timeoutId = setTimeout(() => {
+        const el = document.getElementById(`${idPrefix}-page-${localPage}`);
+        const container = viewportRef.current;
+        if (el && container) {
+          const elRect = el.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+          const relativeTop = elRect.top - containerRect.top + container.scrollTop;
+          container.scrollTo({ top: Math.max(0, Math.round(relativeTop)), behavior: 'auto' });
+        }
+        pageChangeSourceRef.current = null;
+      }, 100);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [viewMode]);
+
   const setCurrentPageFromManualAction = (page: number) => {
     pageChangeSourceRef.current = 'manual';
+    setLocalPage(page);
     setCurrentPage(page);
+    setManualScrollNonce(prev => prev + 1);
   };
 
   const setCurrentPageFromScroll = (page: number) => {
     pageChangeSourceRef.current = 'scroll';
+    setLocalPage(page);
     setCurrentPage(page);
   };
 
@@ -335,10 +365,9 @@ function App() {
     });
   };
 
-  const notesText = getPageEntry(currentPage).note;
-  const currentHighlights = getPageEntry(currentPage).highlights;
+  const notesText = getPageEntry(localPage).note;
+  const currentHighlights = getPageEntry(localPage).highlights;
 
-  // Handle Swapping Files
   const saveCurrentProgressIfNeeded = async () => {
     if (!selectedFile) return;
     const fileToSave = selectedFile;
@@ -357,7 +386,6 @@ function App() {
     }
   };
 
-  // Cloud Progress Syncing Coordinates
   useEffect(() => {
     if (!selectedFile?.id) return;
     const progressUserId = userId;
@@ -377,6 +405,7 @@ function App() {
       if (data) {
         const loadedPage = data.currentPage;
         if (totalPages && totalPages > 0 && loadedPage >= 1 && loadedPage <= totalPages) {
+          pageChangeSourceRef.current = 'manual'; 
           setCurrentPageFromManualAction(loadedPage);
         } else {
           pendingLoadedPageRef.current = loadedPage;
@@ -411,7 +440,6 @@ function App() {
     fetchServerState();
   }, [userId, selectedFile, totalPages]);
 
-  // Apply pending loaded page when totalPages becomes available
   useEffect(() => {
     const pending = pendingLoadedPageRef.current;
     if (pending && totalPages && totalPages > 0) {
@@ -516,7 +544,7 @@ function App() {
     }
   };
 
-  const handleNotesResizeMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+  const handleNotesResizeMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     notesResizeRef.current = {
       startX: event.clientX,
@@ -587,7 +615,7 @@ function App() {
     if (!pageElement) return false;
 
     const pageMatch = pageElement.id.match(/-(\d+)$/);
-    const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : currentPage;
+    const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : localPage;
 
     if (!Number.isFinite(pageNumber) || pageNumber < 1) return false;
 
@@ -610,7 +638,7 @@ function App() {
     addHighlight(pageNumber, selectedText, occurrenceIndex);
     selection.removeAllRanges();
     return true;
-  }, [addHighlight, currentPage]);
+  }, [addHighlight, localPage]);
 
   useEffect(() => {
     if (!notesOpen && !isHighlightMode) return;
@@ -676,7 +704,7 @@ function App() {
       activeLibrary={library}
       libraryOpen={libraryOpen}
       infoOpen={infoOpen}
-      currentPage={currentPage}
+      currentPage={localPage}
       pageInput={pageInput}
       zoom={zoom}
       viewMode={viewMode}
@@ -691,6 +719,7 @@ function App() {
       selectedHighlightId={selectedHighlightId}
       notesByPage={notesByPage}
       isHighlightMode={isHighlightMode}
+      manualScrollNonce={manualScrollNonce}
       onToggleHighlightMode={handleToggleHighlightMode}
       onOpenLibrary={() => setLibraryOpen(true)}
       onCloseLibrary={() => setLibraryOpen(false)}
@@ -712,10 +741,10 @@ function App() {
       onSetSelectedHighlightId={setSelectedHighlightId}
       onCloseNotes={() => setNotesOpen(false)}
       onResizeNotesMouseDown={handleNotesResizeMouseDown}
-      onUpdateNote={(value) => updatePageNote(currentPage, value)}
-      onUpdateHighlightComment={(highlightId, comment) => updateHighlightComment(currentPage, highlightId, comment)}
-      onRemoveHighlight={(highlightId) => removeHighlight(currentPage, highlightId)}
-      onRenameHighlight={(highlightId, name) => renameHighlight(currentPage, highlightId, name)}
+      onUpdateNote={(value) => updatePageNote(localPage, value)}
+      onUpdateHighlightComment={(highlightId, comment) => updateHighlightComment(localPage, highlightId, comment)}
+      onRemoveHighlight={(highlightId) => removeHighlight(localPage, highlightId)}
+      onRenameHighlight={(highlightId, name) => renameHighlight(localPage, highlightId, name)}
     />
   );
 }

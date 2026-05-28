@@ -32,6 +32,7 @@ interface ReaderWorkspaceProps {
   selectedHighlightId: string | null;
   notesByPage: NotesByPage;
   isHighlightMode: boolean;
+  manualScrollNonce: number; // <-- ADDED PROPERTY DEFINITION
   onToggleHighlightMode: () => void;
   onOpenLibrary: () => void;
   onCloseLibrary: () => void;
@@ -82,6 +83,7 @@ export default function ReaderWorkspace({
   selectedHighlightId,
   notesByPage,
   isHighlightMode,
+  manualScrollNonce, // <-- DESTRUCTURED VALUE FROM PROPS
   onToggleHighlightMode,
   onOpenLibrary,
   onCloseLibrary,
@@ -249,6 +251,7 @@ export default function ReaderWorkspace({
               onCurrentPageChange={onSetCurrentPageFromScroll}
               scrollContainerRef={viewportRef}
               pageChangeSourceRef={pageChangeSourceRef}
+              manualScrollNonce={manualScrollNonce} // <-- PASSED THROUGH TO PDFVIEWER
               highlightsByPage={notesByPage}
               selectedHighlightId={selectedHighlightId}
               onSelectHighlight={handleSelectHighlight}
