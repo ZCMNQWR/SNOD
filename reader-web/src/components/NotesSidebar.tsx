@@ -38,6 +38,14 @@ export default function NotesSidebar({
   const [noteHeight, setNoteHeight] = useState<number>(140);
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   useEffect(() => {
     const handleMove = (ev: globalThis.MouseEvent) => {
       if (!resizeRef.current) return;
@@ -71,9 +79,9 @@ export default function NotesSidebar({
   return (
     <aside
       style={{
-        width,
-        minWidth: 260,
-        maxWidth: '60vw',
+        width: isMobile ? '100vw' : width,
+        minWidth: isMobile ? '100vw' : 260,
+        maxWidth: isMobile ? '100vw' : '60vw',
         height: '100%',
         background: 'linear-gradient(180deg, #111827 0%, #0f172a 100%)',
         color: '#e5e7eb',
@@ -81,24 +89,28 @@ export default function NotesSidebar({
         boxShadow: '-10px 0 24px rgba(0,0,0,0.18)',
         display: 'flex',
         flexDirection: 'column',
-        position: 'relative',
+        position: isMobile ? 'absolute' : 'relative',
+        zIndex: isMobile ? 50 : 1,
+        right: 0,
         overflow: 'hidden',
       }}
     >
-      <div
-        onMouseDown={onResizeMouseDown}
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 8,
-          cursor: 'col-resize',
-          background: 'transparent',
-          zIndex: 2,
-        }}
-        aria-hidden="true"
-      />
+      {!isMobile && (
+        <div
+          onMouseDown={onResizeMouseDown}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 8,
+            cursor: 'col-resize',
+            background: 'transparent',
+            zIndex: 2,
+          }}
+          aria-hidden="true"
+        />
+      )}
 
       <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div>
@@ -160,6 +172,22 @@ export default function NotesSidebar({
                 };
                 window.addEventListener('mousemove', handleMove);
                 window.addEventListener('mouseup', handleUp);
+              }}
+              onTouchStart={(e: React.TouchEvent) => {
+                resizeRef.current = { startY: e.touches[0].clientY, startHeight: noteHeight };
+                const handleTouchMove = (ev: globalThis.TouchEvent) => {
+                  if (!resizeRef.current) return;
+                  const delta = ev.touches[0].clientY - resizeRef.current.startY;
+                  const next = Math.max(80, Math.min(800, resizeRef.current.startHeight + delta));
+                  setNoteHeight(next);
+                };
+                const handleTouchEnd = () => {
+                  resizeRef.current = null;
+                  window.removeEventListener('touchmove', handleTouchMove);
+                  window.removeEventListener('touchend', handleTouchEnd);
+                };
+                window.addEventListener('touchmove', handleTouchMove, { passive: true });
+                window.addEventListener('touchend', handleTouchEnd);
               }}
               style={{ height: 8, cursor: 'ns-resize', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               aria-hidden="true"

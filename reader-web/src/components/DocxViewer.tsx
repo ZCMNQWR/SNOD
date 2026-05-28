@@ -35,6 +35,13 @@ export function DocxViewer({
 }: DocxViewerProps) {
   const docxContainerRef = useRef<HTMLDivElement | null>(null);
   const [renderVersion, setRenderVersion] = useState(0);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // 1. Create a signature that ONLY changes when highlights are added/removed, NOT when notes are typed.
   const highlightDependency = JSON.stringify(
@@ -245,7 +252,7 @@ export function DocxViewer({
         } else {
           htmlPage.style.margin = '20px auto';
         }
-        htmlPage.style.padding = '28px 32px';
+        htmlPage.style.padding = isMobile ? '16px 12px' : '28px 32px';
         htmlPage.style.boxSizing = 'border-box';
         htmlPage.style.boxShadow = '0 16px 40px rgba(0,0,0,0.14)';
         htmlPage.style.backgroundColor = '#ffffff';
@@ -283,7 +290,7 @@ export function DocxViewer({
           htmlPage.style.width = '100%';
           htmlPage.style.maxWidth = '900px';
           htmlPage.style.margin = '0 auto';
-          htmlPage.style.padding = '28px 32px';
+          htmlPage.style.padding = isMobile ? '16px 12px' : '28px 32px';
           htmlPage.style.boxSizing = 'border-box';
           htmlPage.style.boxShadow = '0 16px 40px rgba(0,0,0,0.14)';
           htmlPage.style.backgroundColor = '#ffffff';

@@ -208,7 +208,7 @@ function App() {
       }).catch(() => {
         setSyncStatus('Auto-save failed.');
       });
-    }, AUTO_SAVE_DELAY_MS);
+    }, delay);
 
     return () => {
       if (autoSaveTimerRef.current) {

@@ -42,6 +42,13 @@ export function PdfViewer({
   const [textRenderVersion, setTextRenderVersion] = useState(0);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const handleTextLayerRendered = useCallback(() => {
     setTextRenderVersion(v => v + 1);
@@ -266,7 +273,8 @@ export function PdfViewer({
     };
   }, [currentPage, numPages, onCurrentPageChange, scrollContainerRef, viewMode, pageChangeSourceRef]);
 
-  const pageWidth = Math.max(200, 600 * zoom / 100);
+  const baseWidth = isMobile ? Math.min(window.innerWidth - 32, 600) : 600;
+  const pageWidth = Math.max(200, baseWidth * zoom / 100);
   const estimatedPageHeight = pageWidth * 1.3; // Standard 8.5x11 aspect ratio
 
   // Memoize the options object so it doesn't recreate every render and trigger unnecessary reloads
@@ -323,7 +331,7 @@ export function PdfViewer({
         error={<div style={{ padding: '20px' }}>{loadError === 'forbidden' ? 'Forbidden: check your auth token' : 'Failed to load PDF.'}</div>}
       >
         {viewMode === 'scroll' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: isMobile ? '10px' : '20px' }}>
             {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
               <div 
                 key={pageNum} 
