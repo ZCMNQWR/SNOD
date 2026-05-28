@@ -563,59 +563,65 @@ function App() {
     };
   }, [notesOpen]);
 
+  const processCurrentSelection = useCallback(() => {
+    if (!viewportRef.current) return false;
+    const viewport = viewportRef.current;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return false;
+
+    const selectedText = selection.toString().replace(/\s+/g, ' ').trim();
+    if (!selectedText) return false;
+
+    const range = selection.getRangeAt(0);
+    let currentNode: Node | null = range.commonAncestorContainer;
+    let pageElement: HTMLElement | null = null;
+
+    while (currentNode && currentNode !== viewport) {
+      if (currentNode instanceof HTMLElement && /^(txt|pdf|docx)-page-\d+$/.test(currentNode.id)) {
+        pageElement = currentNode;
+        break;
+      }
+      currentNode = currentNode.parentNode;
+    }
+
+    if (!pageElement) return false;
+
+    const pageMatch = pageElement.id.match(/-(\d+)$/);
+    const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : currentPage;
+
+    if (!Number.isFinite(pageNumber) || pageNumber < 1) return false;
+
+    const preSelectionRange = range.cloneRange();
+    preSelectionRange.selectNodeContents(pageElement);
+    preSelectionRange.setEnd(range.startContainer, range.startOffset);
+    
+    const preSelectionText = preSelectionRange.toString();
+
+    let occurrenceIndex = 0;
+    const strippedPreSelection = preSelectionText.replace(/\s+/g, '').toLowerCase();
+    const strippedSelected = selectedText.replace(/\s+/g, '').toLowerCase();
+    
+    let pos = strippedPreSelection.indexOf(strippedSelected);
+    while (pos !== -1) {
+      occurrenceIndex++;
+      pos = strippedPreSelection.indexOf(strippedSelected, pos + 1);
+    }
+
+    addHighlight(pageNumber, selectedText, occurrenceIndex);
+    selection.removeAllRanges();
+    return true;
+  }, [addHighlight, currentPage]);
+
   useEffect(() => {
     if (!notesOpen && !isHighlightMode) return;
     if (!viewportRef.current) return;
     const viewport = viewportRef.current;
 
     const handleSelectionComplete = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) return;
-
-      const selectedText = selection.toString().replace(/\s+/g, ' ').trim();
-      if (!selectedText) return;
-
-      const range = selection.getRangeAt(0);
-      let currentNode: Node | null = range.commonAncestorContainer;
-      let pageElement: HTMLElement | null = null;
-
-      while (currentNode && currentNode !== viewport) {
-        if (currentNode instanceof HTMLElement && /^(txt|pdf|docx)-page-\d+$/.test(currentNode.id)) {
-          pageElement = currentNode;
-          break;
-        }
-        currentNode = currentNode.parentNode;
-      }
-
-      if (!pageElement) return;
-
-      const pageMatch = pageElement.id.match(/-(\d+)$/);
-      const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : currentPage;
-
-      if (!Number.isFinite(pageNumber) || pageNumber < 1) return;
-
-      const preSelectionRange = range.cloneRange();
-      preSelectionRange.selectNodeContents(pageElement);
-      preSelectionRange.setEnd(range.startContainer, range.startOffset);
-      
-      const preSelectionText = preSelectionRange.toString();
-
-      let occurrenceIndex = 0;
-      const strippedPreSelection = preSelectionText.replace(/\s+/g, '').toLowerCase();
-      const strippedSelected = selectedText.replace(/\s+/g, '').toLowerCase();
-      
-      let pos = strippedPreSelection.indexOf(strippedSelected);
-      while (pos !== -1) {
-        occurrenceIndex++;
-        pos = strippedPreSelection.indexOf(strippedSelected, pos + 1);
-      }
-
-      addHighlight(pageNumber, selectedText, occurrenceIndex);
-      selection.removeAllRanges();
+      processCurrentSelection();
     };
 
     const handleDocumentTouchEnd = () => {
-      // Add a slight delay to allow native mobile selection handles to finish updating
       setTimeout(handleSelectionComplete, 100);
     };
 
@@ -625,7 +631,14 @@ function App() {
       viewport.removeEventListener('mouseup', handleSelectionComplete);
       document.removeEventListener('touchend', handleDocumentTouchEnd);
     };
-  }, [addHighlight, currentPage, notesOpen, isHighlightMode]);
+  }, [processCurrentSelection, notesOpen, isHighlightMode]);
+
+  const handleToggleHighlightMode = useCallback(() => {
+    const captured = processCurrentSelection();
+    if (!captured) {
+      setIsHighlightMode((prev) => !prev);
+    }
+  }, [processCurrentSelection]);
 
   if (!isSignedIn) {
     return (
@@ -681,7 +694,7 @@ function App() {
       selectedHighlightId={selectedHighlightId}
       notesByPage={notesByPage}
       isHighlightMode={isHighlightMode}
-      onToggleHighlightMode={() => setIsHighlightMode((prev) => !prev)}
+      onToggleHighlightMode={handleToggleHighlightMode}
       onOpenLibrary={() => setLibraryOpen(true)}
       onCloseLibrary={() => setLibraryOpen(false)}
       onSelectLibraryFile={openFileForCurrentSession}

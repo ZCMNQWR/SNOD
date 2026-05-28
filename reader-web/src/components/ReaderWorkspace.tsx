@@ -120,7 +120,7 @@ export default function ReaderWorkspace({
   const shellStyle: CSSProperties = {
     fontFamily: 'system-ui, sans-serif',
     width: '100%',
-    height: '100vh',
+    height: '100dvh',
     margin: '0',
     padding: '0',
     border: 'none',
@@ -130,7 +130,7 @@ export default function ReaderWorkspace({
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: '#fff',
-    overflow: 'auto'
+    overflow: 'hidden'
   };
 
   const viewportStyle: CSSProperties = {
@@ -156,7 +156,7 @@ export default function ReaderWorkspace({
 
   return (
     <div ref={shellRef} style={shellStyle}>
-      <div style={{ display: isMobile && !toolbarVisible ? 'none' : 'block' }}>
+      <div style={{ display: isMobile && !toolbarVisible ? 'none' : 'block', flexShrink: 0, position: 'relative', zIndex: 50 }}>
         <ReaderToolbar
           selectedFile={selectedFile}
           currentPage={currentPage}
@@ -262,26 +262,29 @@ export default function ReaderWorkspace({
         </div>
 
         <button
+          onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             e.stopPropagation();
             onToggleHighlightMode();
           }}
           style={{
             position: 'absolute',
-            bottom: '24px',
-            right: (!isMobile && notesOpen) ? `${notesPanelWidth + 24}px` : '24px',
-            width: '56px',
-            height: '56px',
-            borderRadius: '28px',
+            bottom: '32px',
+            right: (!isMobile && notesOpen) ? `${notesPanelWidth + 32}px` : '32px',
+            padding: isMobile ? '0' : '0 20px',
+            width: isMobile ? '56px' : 'auto',
+            height: isMobile ? '56px' : '48px',
+            borderRadius: isMobile ? '28px' : '24px',
             backgroundColor: isHighlightMode ? '#facc15' : '#1e293b',
             color: isHighlightMode ? '#111827' : '#fff',
-            border: 'none',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            border: isHighlightMode ? '2px solid #eab308' : '2px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            gap: '8px',
             cursor: 'pointer',
-            zIndex: 40,
+            zIndex: 9999,
             transition: 'right 0.3s ease, background-color 0.2s ease',
           }}
           title={isHighlightMode ? "Highlight Mode: ON" : "Highlight Mode: OFF"}
@@ -291,6 +294,11 @@ export default function ReaderWorkspace({
             <path d="M9 11l-6 6v3h9l3-3" />
             <path d="M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
           </svg>
+          {!isMobile && (
+            <span style={{ fontWeight: 600, fontSize: '14px', whiteSpace: 'nowrap' }}>
+              {isHighlightMode ? 'Highlighting Active' : 'Highlight Text'}
+            </span>
+          )}
         </button>
 
         {notesOpen && (
