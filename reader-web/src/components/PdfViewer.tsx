@@ -201,11 +201,19 @@ export function PdfViewer({
 
       const element = document.getElementById(`pdf-page-${currentPage}`);
       if (element) {
-        element.scrollIntoView({ behavior: 'auto', block: 'start' });
-        
-        const reScrollTimer = setTimeout(() => {
-          element.scrollIntoView({ behavior: 'auto', block: 'start' });
-        }, 150);
+        const doScroll = () => {
+          const container = scrollContainerRef.current;
+          if (container) {
+            const elRect = element.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            container.scrollTo({ top: container.scrollTop + (elRect.top - containerRect.top), behavior: 'auto' });
+          } else {
+            element.scrollIntoView({ behavior: 'auto', block: 'start' });
+          }
+        };
+
+        doScroll();
+        const reScrollTimer = setTimeout(doScroll, 150);
 
         const unlockTimer = setTimeout(() => {
           if (pageChangeSourceRef.current === 'manual') {

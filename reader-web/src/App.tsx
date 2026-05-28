@@ -634,11 +634,8 @@ function App() {
   }, [processCurrentSelection, notesOpen, isHighlightMode]);
 
   const handleToggleHighlightMode = useCallback(() => {
-    const captured = processCurrentSelection();
-    if (!captured) {
-      setIsHighlightMode((prev) => !prev);
-    }
-  }, [processCurrentSelection]);
+    setIsHighlightMode((prev) => !prev);
+  }, []);
 
   if (!isSignedIn) {
     return (

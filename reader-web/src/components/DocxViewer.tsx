@@ -321,7 +321,14 @@ export function DocxViewer({
     const element = document.getElementById(`docx-page-${currentPage}`);
     if (element) {
       // The page exists! Scroll to it.
-      element.scrollIntoView({ behavior: 'auto', block: 'start' });
+      const container = scrollContainerRef.current;
+      if (container) {
+        const elRect = element.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        container.scrollTo({ top: container.scrollTop + (elRect.top - containerRect.top), behavior: 'auto' });
+      } else {
+        element.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }
       
       const timer = setTimeout(() => {
         if (pageChangeSourceRef.current === 'manual') {

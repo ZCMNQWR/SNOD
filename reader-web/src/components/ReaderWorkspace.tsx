@@ -121,6 +121,7 @@ export default function ReaderWorkspace({
     fontFamily: 'system-ui, sans-serif',
     width: '100%',
     height: '100dvh',
+    position: 'relative',
     margin: '0',
     padding: '0',
     border: 'none',
@@ -156,7 +157,17 @@ export default function ReaderWorkspace({
 
   return (
     <div ref={shellRef} style={shellStyle}>
-      <div style={{ display: isMobile && !toolbarVisible ? 'none' : 'block', flexShrink: 0, position: 'relative', zIndex: 50 }}>
+      <div 
+        style={{ 
+          display: isMobile && !toolbarVisible ? 'none' : 'block', 
+          flexShrink: 0, 
+          position: isMobile ? 'absolute' : 'relative', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          zIndex: 100 
+        }}
+      >
         <ReaderToolbar
           selectedFile={selectedFile}
           currentPage={currentPage}
@@ -296,7 +307,7 @@ export default function ReaderWorkspace({
           </svg>
           {!isMobile && (
             <span style={{ fontWeight: 600, fontSize: '14px', whiteSpace: 'nowrap' }}>
-              {isHighlightMode ? 'Highlighting Active' : 'Highlight Text'}
+              Highlight
             </span>
           )}
         </button>
