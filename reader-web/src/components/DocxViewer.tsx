@@ -76,8 +76,8 @@ export function DocxViewer({
           await renderAsync(blob, docxContainerRef.current, docxContainerRef.current, {
             className: "docx-view",
             inWrapper: false,
-            ignoreWidth: false,
-            ignoreHeight: false,
+            ignoreWidth: isMobile,
+            ignoreHeight: isMobile,
             experimental: true
           });
 
@@ -252,7 +252,11 @@ export function DocxViewer({
         } else {
           htmlPage.style.margin = '20px auto';
         }
-        htmlPage.style.padding = isMobile ? '16px 12px' : '28px 32px';
+        if (isMobile) {
+          htmlPage.style.setProperty('padding', '16px 12px', 'important');
+        } else {
+          htmlPage.style.padding = '28px 32px';
+        }
         htmlPage.style.boxSizing = 'border-box';
         htmlPage.style.boxShadow = '0 16px 40px rgba(0,0,0,0.14)';
         htmlPage.style.backgroundColor = '#ffffff';
@@ -290,7 +294,11 @@ export function DocxViewer({
           htmlPage.style.width = '100%';
           htmlPage.style.maxWidth = '900px';
           htmlPage.style.margin = '0 auto';
-          htmlPage.style.padding = isMobile ? '16px 12px' : '28px 32px';
+          if (isMobile) {
+            htmlPage.style.setProperty('padding', '16px 12px', 'important');
+          } else {
+            htmlPage.style.padding = '28px 32px';
+          }
           htmlPage.style.boxSizing = 'border-box';
           htmlPage.style.boxShadow = '0 16px 40px rgba(0,0,0,0.14)';
           htmlPage.style.backgroundColor = '#ffffff';
@@ -382,17 +390,20 @@ export function DocxViewer({
   }, [currentPage, onCurrentPageChange, renderVersion, scrollContainerRef, viewMode, pageChangeSourceRef]);
 
   return (
-    <div 
-      ref={docxContainerRef} 
-      style={{ 
-        display: 'block', 
-        padding: '10px',
-        backgroundColor: '#ffffff',
-        transform: `scale(${zoom / 100})`,
-        transformOrigin: 'top center',
-        transition: 'transform 0.2s ease'
-      }}
-      className="docx-view-single"
-    />
+    <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: isMobile ? 'flex-start' : 'center' }}>
+      <div 
+        ref={docxContainerRef} 
+        style={{ 
+          display: 'block', 
+          padding: isMobile ? '4px' : '10px',
+          backgroundColor: '#ffffff',
+          transform: `scale(${zoom / 100})`,
+          transformOrigin: isMobile ? 'top left' : 'top center',
+          transition: 'transform 0.2s ease',
+          width: '100%'
+        }}
+        className="docx-view-single"
+      />
+    </div>
   );
 }

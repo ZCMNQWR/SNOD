@@ -57,6 +57,7 @@ function App() {
   const [notesByPage, setNotesByPage] = useState<NotesByPage>({});
   const [syncStatus, setSyncStatus] = useState<string>('Connecting...');
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
+  const [isHighlightMode, setIsHighlightMode] = useState<boolean>(false);
 
   const AUTO_SAVE_DELAY_MS = 5000;
 
@@ -563,10 +564,11 @@ function App() {
   }, [notesOpen]);
 
   useEffect(() => {
-    if (!notesOpen || !viewportRef.current) return;
+    if (!notesOpen && !isHighlightMode) return;
+    if (!viewportRef.current) return;
     const viewport = viewportRef.current;
 
-    const handleMouseUp = () => {
+    const handleSelectionComplete = () => {
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed) return;
 
@@ -612,9 +614,18 @@ function App() {
       selection.removeAllRanges();
     };
 
-    viewport.addEventListener('mouseup', handleMouseUp);
-    return () => viewport.removeEventListener('mouseup', handleMouseUp);
-  }, [addHighlight, currentPage, notesOpen]);
+    const handleDocumentTouchEnd = () => {
+      // Add a slight delay to allow native mobile selection handles to finish updating
+      setTimeout(handleSelectionComplete, 100);
+    };
+
+    viewport.addEventListener('mouseup', handleSelectionComplete);
+    document.addEventListener('touchend', handleDocumentTouchEnd);
+    return () => {
+      viewport.removeEventListener('mouseup', handleSelectionComplete);
+      document.removeEventListener('touchend', handleDocumentTouchEnd);
+    };
+  }, [addHighlight, currentPage, notesOpen, isHighlightMode]);
 
   if (!isSignedIn) {
     return (
@@ -669,6 +680,8 @@ function App() {
       totalPages={totalPages}
       selectedHighlightId={selectedHighlightId}
       notesByPage={notesByPage}
+      isHighlightMode={isHighlightMode}
+      onToggleHighlightMode={() => setIsHighlightMode((prev) => !prev)}
       onOpenLibrary={() => setLibraryOpen(true)}
       onCloseLibrary={() => setLibraryOpen(false)}
       onSelectLibraryFile={openFileForCurrentSession}

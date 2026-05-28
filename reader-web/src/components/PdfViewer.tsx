@@ -319,7 +319,11 @@ export function PdfViewer({
   }, [file.id]);
 
   return (
-    <div style={{ display: 'flex', justifyContent: viewMode === 'scroll' ? 'flex-start' : 'center', minHeight: '100%', flexDirection: 'column', alignItems: 'center' }}>
+    <div style={{ display: 'flex', justifyContent: viewMode === 'scroll' ? 'flex-start' : 'center', minHeight: '100%', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'center', width: '100%', overflowX: 'auto' }}>
+      <style>{`
+        /* Prevent canvas from squishing in flex containers, ensuring text layer stays perfectly aligned */
+        .react-pdf__Page__canvas { max-width: none !important; }
+      `}</style>
       <Document
         file={pdfBlobUrl || getFileStreamUrl(file.id)}
         options={options}

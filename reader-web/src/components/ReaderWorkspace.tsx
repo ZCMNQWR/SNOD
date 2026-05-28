@@ -1,4 +1,4 @@
-import { type CSSProperties, type RefObject, type MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useEffect, type CSSProperties, type RefObject, type MouseEvent as ReactMouseEvent } from 'react';
 import { TxtViewer } from './TxtViewer';
 import { PdfViewer } from './PdfViewer';
 import { DocxViewer } from './DocxViewer';
@@ -31,6 +31,8 @@ interface ReaderWorkspaceProps {
   totalPages: number;
   selectedHighlightId: string | null;
   notesByPage: NotesByPage;
+  isHighlightMode: boolean;
+  onToggleHighlightMode: () => void;
   onOpenLibrary: () => void;
   onCloseLibrary: () => void;
   onSelectLibraryFile: (file: AvailableFile) => Promise<void> | void;
@@ -79,6 +81,8 @@ export default function ReaderWorkspace({
   totalPages,
   selectedHighlightId,
   notesByPage,
+  isHighlightMode,
+  onToggleHighlightMode,
   onOpenLibrary,
   onCloseLibrary,
   onSelectLibraryFile,
@@ -104,6 +108,15 @@ export default function ReaderWorkspace({
   onRemoveHighlight,
   onRenameHighlight,
 }: ReaderWorkspaceProps) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const shellStyle: CSSProperties = {
     fontFamily: 'system-ui, sans-serif',
     width: '100%',
@@ -143,28 +156,30 @@ export default function ReaderWorkspace({
 
   return (
     <div ref={shellRef} style={shellStyle}>
-      <ReaderToolbar
-        selectedFile={selectedFile}
-        currentPage={currentPage}
-        totalPages={totalPages}
-        pageInput={pageInput}
-        zoom={zoom}
-        viewMode={viewMode}
-        isFullPage={isFullPage}
-        userId={userId}
-        syncStatus={syncStatus}
-        onOpenLibrary={onOpenLibrary}
-        onSetCurrentPage={onSetCurrentPageFromManualAction}
-        onSetPageInput={onSetPageInput}
-        onSetZoom={onSetZoom}
-        onSetViewMode={onSetViewMode}
-        onToggleFullPage={onToggleFullPage}
-        onSignOut={onSignOut}
-        onOpenNotes={onOpenNotes}
-        onOpenInfo={onOpenInfo}
-        onSaveProgress={onSaveProgress}
-        onPageChangeSourceManual={() => { pageChangeSourceRef.current = 'manual'; }}
-      />
+      <div style={{ display: isMobile && !toolbarVisible ? 'none' : 'block' }}>
+        <ReaderToolbar
+          selectedFile={selectedFile}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageInput={pageInput}
+          zoom={zoom}
+          viewMode={viewMode}
+          isFullPage={isFullPage}
+          userId={userId}
+          syncStatus={syncStatus}
+          onOpenLibrary={onOpenLibrary}
+          onSetCurrentPage={onSetCurrentPageFromManualAction}
+          onSetPageInput={onSetPageInput}
+          onSetZoom={onSetZoom}
+          onSetViewMode={onSetViewMode}
+          onToggleFullPage={onToggleFullPage}
+          onSignOut={onSignOut}
+          onOpenNotes={onOpenNotes}
+          onOpenInfo={onOpenInfo}
+          onSaveProgress={onSaveProgress}
+          onPageChangeSourceManual={() => { pageChangeSourceRef.current = 'manual'; }}
+        />
+      </div>
 
       {libraryOpen && (
         <LibraryPanel
@@ -188,8 +203,16 @@ export default function ReaderWorkspace({
         />
       )}
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, width: '100%' }}>
-        <div ref={viewportRef} style={{ ...viewportStyle, width: 'auto', minWidth: 0, flex: 1, height: '100%' }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, width: '100%', position: 'relative' }}>
+        <div 
+          ref={viewportRef} 
+          style={{ ...viewportStyle, width: 'auto', minWidth: 0, flex: 1, height: '100%' }}
+          onClick={() => {
+            if (isMobile) {
+              setToolbarVisible((prev) => !prev);
+            }
+          }}
+        >
           {selectedFile?.type === 'txt' && (
             <TxtViewer
               file={selectedFile}
@@ -237,6 +260,38 @@ export default function ReaderWorkspace({
             />
           )}
         </div>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleHighlightMode();
+          }}
+          style={{
+            position: 'absolute',
+            bottom: '24px',
+            right: (!isMobile && notesOpen) ? `${notesPanelWidth + 24}px` : '24px',
+            width: '56px',
+            height: '56px',
+            borderRadius: '28px',
+            backgroundColor: isHighlightMode ? '#facc15' : '#1e293b',
+            color: isHighlightMode ? '#111827' : '#fff',
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: 40,
+            transition: 'right 0.3s ease, background-color 0.2s ease',
+          }}
+          title={isHighlightMode ? "Highlight Mode: ON" : "Highlight Mode: OFF"}
+          aria-label="Toggle Highlight Mode"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 11l-6 6v3h9l3-3" />
+            <path d="M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
+          </svg>
+        </button>
 
         {notesOpen && (
           <NotesSidebar
