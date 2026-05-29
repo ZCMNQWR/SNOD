@@ -14,7 +14,6 @@ interface DocxViewerProps {
   onCurrentPageChange: (page: number) => void;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   pageChangeSourceRef: RefObject<'manual' | 'scroll' | null>;
-  manualScrollNonce: number;
   highlightsByPage?: NotesByPage;
   selectedHighlightId?: string | null;
   onSelectHighlight?: (id: string | null) => void;
@@ -30,7 +29,6 @@ export function DocxViewer({
   onCurrentPageChange, 
   scrollContainerRef, 
   pageChangeSourceRef,
-  manualScrollNonce,
   highlightsByPage,
   selectedHighlightId,
   onSelectHighlight
@@ -97,7 +95,7 @@ export function DocxViewer({
       }
     }
     loadAndCompileDocx();
-  }, [file, onStatusChange, onTotalPagesChange, isMobile]); // Added 'isMobile' dependency
+  }, [file, onStatusChange, onTotalPagesChange, isMobile]); // FIXED: Synchronized isMobile tracking metric criteria
 
   useEffect(() => {
     if (!docxContainerRef.current || renderVersion === 0) return;
@@ -302,48 +300,61 @@ export function DocxViewer({
         }
       });
     }
-  }, [currentPage, file, viewMode, renderVersion, isMobile]); // Added 'isMobile' dependency
+  }, [currentPage, file, viewMode, renderVersion, isMobile]); // FIXED: Added missing isMobile dependency
 
   useEffect(() => {
-    if (viewMode !== 'scroll' || renderVersion === 0) return;
-    if (pageChangeSourceRef.current !== 'manual') return;
+    if (viewMode !== 'scroll' || pageChangeSourceRef.current !== 'manual') {
+      return;
+    }
 
-    const container = scrollContainerRef.current;
     const element = document.getElementById(`docx-page-${currentPage}`);
-    
-    if (element && container) {
-      const elRect = element.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      const relativeTop = elRect.top - containerRect.top + container.scrollTop;
-
-      container.scrollTo({
-        top: Math.max(0, Math.round(relativeTop)),
-        behavior: 'auto'
-      });
-
-      const unlockTimer = setTimeout(() => {
+    if (element) {
+      const container = scrollContainerRef.current;
+      if (container) {
+        const elRect = element.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        container.scrollTo({ top: container.scrollTop + (elRect.top - containerRect.top), behavior: 'auto' });
+      } else {
+        element.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }
+      
+      const timer = setTimeout(() => {
         if (pageChangeSourceRef.current === 'manual') {
           pageChangeSourceRef.current = null;
         }
       }, 150);
-      return () => clearTimeout(unlockTimer);
+      return () => clearTimeout(timer);
     }
-  }, [currentPage, manualScrollNonce, viewMode, renderVersion, scrollContainerRef, pageChangeSourceRef]);
+
+    const fallbackTimer = setTimeout(() => {
+      if (pageChangeSourceRef.current === 'manual') {
+        pageChangeSourceRef.current = null;
+      }
+    }, 2000);
+    return () => clearTimeout(fallbackTimer);
+  }, [currentPage, pageChangeSourceRef, viewMode, renderVersion, scrollContainerRef]);
 
   useEffect(() => {
-    if (viewMode !== 'scroll' || renderVersion === 0) return;
+    if (viewMode !== 'scroll') {
+      return;
+    }
 
     const container = scrollContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     const pages = docxContainerRef.current?.querySelectorAll('.docx-viewer > section, section');
-    if (!pages || pages.length === 0) return;
+    if (!pages || pages.length === 0) {
+      return;
+    }
 
     let animationFrameId = 0;
 
     const updateCurrentPageFromScroll = () => {
-      if (pageChangeSourceRef?.current === 'manual') return;
-      
+      if (pageChangeSourceRef?.current === 'manual') {
+        return;
+      }
       const containerRect = container.getBoundingClientRect();
       const topThreshold = containerRect.top + containerRect.height * 0.4;
       let pageAtTop = 1;
@@ -364,7 +375,7 @@ export function DocxViewer({
     const handleScroll = () => {
       cancelAnimationFrame(animationFrameId);
       animationFrameId = requestAnimationFrame(updateCurrentPageFromScroll);
-    };
+    }
 
     updateCurrentPageFromScroll();
     container.addEventListener('scroll', handleScroll, { passive: true });

@@ -73,12 +73,12 @@ function App() {
   const prevNotesByPageRef = useRef<NotesByPage>(notesByPage);
 
   // FIXED 1 & 2: Derived State Pattern. Tracks viewMode transitions inline on render.
-  // This completely eliminates the react-hooks/set-state-in-effect error and the missing localPage dependencies!
+  // This completely eliminates the react-hooks/set-state-in-effect error and the missing localPage dependencies.
+  // Ref mutation (pageChangeSourceRef) is omitted here to avoid react-hooks/refs errors; it is handled safely in the subsequent manualScrollNonce effect.
   const [prevViewMode, setPrevViewMode] = useState<'single' | 'scroll'>(viewMode);
   if (viewMode !== prevViewMode) {
     setPrevViewMode(viewMode);
     if (viewMode === 'scroll' && localPage > 1) {
-      pageChangeSourceRef.current = 'manual';
       setManualScrollNonce(prev => prev + 1);
     }
   }
@@ -632,7 +632,6 @@ function App() {
   }, []);
 
   // Global Click Listener to unselect highlights when clicking anywhere else
-  // FIXED 3: Placed safely ABOVE conditional statements so its rendering signature remains uniform on every render sequence pass.
   useEffect(() => {
     const handleGlobalClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
