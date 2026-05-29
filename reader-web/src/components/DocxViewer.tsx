@@ -17,6 +17,7 @@ interface DocxViewerProps {
   highlightsByPage?: NotesByPage;
   selectedHighlightId?: string | null;
   onSelectHighlight?: (id: string | null) => void;
+  manualScrollNonce: number;
 }
 
 export function DocxViewer({ 
@@ -31,7 +32,8 @@ export function DocxViewer({
   pageChangeSourceRef,
   highlightsByPage,
   selectedHighlightId,
-  onSelectHighlight
+  onSelectHighlight,
+  manualScrollNonce
 }: DocxViewerProps) {
   const docxContainerRef = useRef<HTMLDivElement | null>(null);
   const [renderVersion, setRenderVersion] = useState(0);
@@ -332,7 +334,7 @@ export function DocxViewer({
       }
     }, 2000);
     return () => clearTimeout(fallbackTimer);
-  }, [currentPage, pageChangeSourceRef, viewMode, renderVersion, scrollContainerRef]);
+  }, [currentPage, pageChangeSourceRef, viewMode, renderVersion, scrollContainerRef, manualScrollNonce]);
 
   useEffect(() => {
     if (viewMode !== 'scroll') {
